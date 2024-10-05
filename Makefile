@@ -1,4 +1,4 @@
-# Template makefile for compiling & statically linking the raylib libray on linux systems
+# Template makefile for compiling & statically linking the raylib libray on windows systems
 # <------------------------------------------------------------------------------------->
 
 
