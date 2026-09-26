@@ -19,6 +19,7 @@ set(WITH_IPP OFF CACHE BOOL "" FORCE)
 
 # Only build the OpenCV modules we actually need
 set(BUILD_LIST
+    dnn
     ml
     core
     imgproc
@@ -99,6 +100,7 @@ target_include_directories(Tesseract PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/calib3d/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/objdetect/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/ml/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/dnn/include"
     # Generated OpenCV headers
     "${CMAKE_CURRENT_BINARY_DIR}"
 )
@@ -112,6 +114,7 @@ target_link_libraries(Tesseract PRIVATE
     opencv_calib3d
     opencv_objdetect
     opencv_ml
+    opencv_dnn
 )
 
 # ============================================================
@@ -128,6 +131,7 @@ target_link_libraries(Tesseract
     opencv_calib3d
     opencv_objdetect
     opencv_ml
+    opencv_dnn
 )
 
 # ============================================================

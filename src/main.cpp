@@ -3,6 +3,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
+#include <opencv2/dnn.hpp>
 
 #include <windows.h>
 #include <filesystem>
@@ -35,17 +36,20 @@ filesystem::path getExecutableDirectory()
 
 void detectAndDraw(
     Mat& img,
-    CascadeClassifier& faceCascade,
-    CascadeClassifier& eyeCascade
+    Ptr<FaceDetectorYN> detector
+//    CascadeClassifier& faceCascade,
+//    CascadeClassifier& eyeCascade
 )
 {
-    Mat gray;
+    detector->setInputSize(img.size());
+    //Mat gray;
+    Mat faces;
+    detector->detect(img, faces);
 
-    cvtColor(img, gray, COLOR_BGR2GRAY);
-    equalizeHist(gray, gray);
-
-    vector<Rect> faces;
-
+    //cvtColor(img, gray, COLOR_BGR2GRAY);
+    //equalizeHist(gray, gray);
+    //vector<Rect> faces;
+    /*
     faceCascade.detectMultiScale(
         gray,
         faces,
@@ -142,10 +146,50 @@ void detectAndDraw(
             }
         }
     }
+*/
 
+    for (int i = 0; i < faces.rows; ++i){
+        int x = cvRound(faces.at<float>(i, 0));
+        int y = cvRound(faces.at<float>(i, 1));
+        int width = cvRound(faces.at<float>(i, 2));
+        int height = cvRound(faces.at<float>(i, 3));
+
+        Rect face(
+            x,
+            y,
+            width,
+            height
+        );
+        rectangle(
+            img,
+            face,
+            Scalar(0, 255, 0),
+            2
+        );
+        Point headCenter(
+            x + width / 2,
+            y + height / 2
+        );
+        circle(
+            img,
+            headCenter,
+            5,
+            Scalar(0, 0, 255),
+            FILLED
+        );
+        putText(
+            img,
+            "X: " + to_string(headCenter.x) + " Y: " + to_string(headCenter.y),
+            Point(x, y - 10),
+            FONT_HERSHEY_SIMPLEX,
+            0.6,
+            Scalar(0, 255, 0),
+            2
+        );
+    }
     // Number of detected faces
     string faceCount =
-        "Faces: " + to_string(faces.size());
+        "Faces detected: " + to_string(faces.rows);
 
     putText(
         img,
@@ -172,25 +216,36 @@ int main()
 
     filesystem::path exeDirectory =
         getExecutableDirectory();
-
+/*
     filesystem::path faceCascadePath =
         exeDirectory /
         "data" /
         "haarcascades" /
-        "haarcascade_frontalface_alt.xml";
+        "haarcascade_frontalface_default.xml";
 
     filesystem::path eyeCascadePath =
         exeDirectory /
         "data" /
         "haarcascades" /
         "haarcascade_eye_tree_eyeglasses.xml";
+*/
+filesystem::path modelPath =
+    exeDirectory /
+    ".." /
+    ".." /
+    ".." /
+    ".." / 
+    "custom" /
+    "face_detection_yunet_2026may.onnx";
 
-    cout << "Executable directory:\n";
-    cout << exeDirectory << "\n\n";
 
-    cout << "Face cascade:\n";
-    cout << faceCascadePath << "\n\n";
+    //cout << "Executable directory:\n";
+    //cout << exeDirectory << "\n\n";
 
+    //cout << "Face cascade:\n";
+    //cout << faceCascadePath << "\n\n";
+    cout << "YuNet model:\n";
+    cout << modelPath << "\n\n";
     // --------------------------------------------------------
     // Load classifiers
     // --------------------------------------------------------
@@ -198,6 +253,14 @@ int main()
     CascadeClassifier faceCascade;
     CascadeClassifier eyeCascade;
 
+    if (!filesystem::exists(modelPath))
+    {
+        cerr << "ERROR: YuNet model file does not exist:\n";
+        cerr << modelPath << "\n";
+        cout << "Exists: " << filesystem::exists(modelPath) << "\n";
+        return 1;
+    }
+    /*
     if (!faceCascade.load(faceCascadePath.string()))
     {
         cerr << "ERROR: Could not load face cascade:\n";
@@ -205,9 +268,9 @@ int main()
 
         return 1;
     }
-
+    */
     cout << "Face cascade loaded.\n";
-
+    /*
     if (!eyeCascade.load(eyeCascadePath.string()))
     {
         cerr << "WARNING: Could not load eye cascade:\n";
@@ -218,37 +281,113 @@ int main()
     {
         cout << "Eye cascade loaded.\n";
     }
+    */
 
     // --------------------------------------------------------
     // Open webcam
     // --------------------------------------------------------
 
-    cout << "Opening webcam...\n";
 
-    VideoCapture camera;
+    Ptr<FaceDetectorYN> detector = FaceDetectorYN::create(
+        modelPath.string(),
+        "",
+        Size(320, 320),
+        0.9f,
+        0.3f,
+        500
+    );
 
-#ifdef _WIN32
-    camera.open(0, CAP_DSHOW);
-#else
-    camera.open(0);
-#endif
-
-    cout << "Camera open() returned.\n";
-
-    if (!camera.isOpened())
+    if (detector.empty())
     {
-        cerr << "ERROR: Could not open webcam.\n";
+        cerr << "ERROR: Could not create YuNet face detector.\n";
         return 1;
     }
 
-    cout << "Camera opened successfully!\n";
-    cout << "Press ESC or Q to quit.\n";
+    cout << "Opening webcam...\n";
+    cout << "YuNet model loaded successfully.\n";
 
+
+VideoCapture camera;
+Mat frame;
+
+// Try DirectShow first
+cout << "Trying DirectShow...\n";
+
+camera.open(0, CAP_DSHOW);
+
+if (camera.isOpened())
+{
+    Sleep(1000);
+
+    bool gotFrame = false;
+
+    for (int i = 0; i < 30; ++i)
+    {
+        if (camera.grab() && camera.retrieve(frame))
+        {
+            if (!frame.empty())
+            {
+                gotFrame = true;
+                break;
+            }
+        }
+
+        Sleep(100);
+    }
+
+    if (!gotFrame)
+    {
+        cout << "DirectShow opened but could not get frames.\n";
+        camera.release();
+    }
+}
+
+// If DirectShow failed, try MSMF
+if (!camera.isOpened())
+{
+    cout << "Trying Media Foundation...\n";
+
+    camera.open(0, CAP_MSMF);
+
+    if (camera.isOpened())
+    {
+        Sleep(1000);
+
+        bool gotFrame = false;
+
+        for (int i = 0; i < 30; ++i)
+        {
+            if (camera.grab() && camera.retrieve(frame))
+            {
+                if (!frame.empty())
+                {
+                    gotFrame = true;
+                    break;
+                }
+            }
+
+            Sleep(100);
+        }
+
+        if (!gotFrame)
+        {
+            cout << "MSMF opened but could not get frames.\n";
+            camera.release();
+        }
+    }
+}
+
+if (!camera.isOpened())
+{
+    cerr << "ERROR: Could not initialize webcam.\n";
+    return 1;
+}
+
+cout << "Camera opened successfully!\n";
+cout << "Press ESC or Q to quit.\n";    
     // --------------------------------------------------------
     // Camera loop
     // --------------------------------------------------------
-
-    Mat frame;
 
     while (true)
     {
@@ -270,8 +409,7 @@ int main()
         // Detect face + eyes
         detectAndDraw(
             frame,
-            faceCascade,
-            eyeCascade
+            detector
         );
 
         // Show result
