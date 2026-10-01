@@ -5,6 +5,25 @@ project(Tesseract LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(FetchContent)
+set(DLIB_NO_GUI_SUPPORT ON CACHE BOOL "" FORCE)
+set(DLIB_USE_CUDA OFF CACHE BOOL "" FORCE)
+set(DLIB_JPEG_SUPPORT OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    dlib
+    GIT_REPOSITORY https://github.com/davisking/dlib.git
+    GIT_TAG v19.24.6
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(dlib)
+if(MSVC)
+    set_property(
+        TARGET dlib
+        PROPERTY MSVC_RUNTIME_LIBRARY
+        "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    )
+endif()
+
 # ============================================================
 # OpenCV configuration
 # ============================================================
@@ -19,15 +38,12 @@ set(WITH_IPP OFF CACHE BOOL "" FORCE)
 
 # Only build the OpenCV modules we actually need
 set(BUILD_LIST
-    dnn
-    ml
     core
     imgproc
     imgcodecs
     highgui
     videoio
     calib3d
-    objdetect
     CACHE STRING "" FORCE
 )
 
@@ -98,23 +114,20 @@ target_include_directories(Tesseract PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/highgui/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/videoio/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/calib3d/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/objdetect/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/ml/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/dnn/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/features2d/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/flann/include"
     # Generated OpenCV headers
     "${CMAKE_CURRENT_BINARY_DIR}"
 )
 
 target_link_libraries(Tesseract PRIVATE
+    dlib::dlib
     opencv_core
     opencv_imgproc
     opencv_imgcodecs
     opencv_videoio
     opencv_highgui
     opencv_calib3d
-    opencv_objdetect
-    opencv_ml
-    opencv_dnn
 )
 
 # ============================================================
@@ -129,9 +142,6 @@ target_link_libraries(Tesseract
     opencv_videoio
     opencv_highgui
     opencv_calib3d
-    opencv_objdetect
-    opencv_ml
-    opencv_dnn
 )
 
 # ============================================================

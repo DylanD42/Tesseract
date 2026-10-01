@@ -1,17 +1,42 @@
 #include <opencv2/core.hpp>
-#include <opencv2/objdetect.hpp>
+#include <opencv2/calib3d.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
-#include <opencv2/dnn.hpp>
+
+#include <dlib/image_processing.h>
+#include <dlib/image_processing/frontal_face_detector.h>
+#include <dlib/opencv.h>
 
 #include <windows.h>
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <vector>
 
 using namespace std;
 using namespace cv;
+
+constexpr int initialPoseFrameCount = 30;
+
+struct FacePositionState
+{
+    Vec3d initialPosition = Vec3d(0.0, 0.0, 0.0);
+    Vec3d currentPosition = Vec3d(0.0, 0.0, 0.0);
+    Vec3d relativePosition = Vec3d(0.0, 0.0, 0.0);
+    Vec3d initialPositionSum = Vec3d(0.0, 0.0, 0.0);
+    int initialPositionSamples = 0;
+
+    void reset()
+    {
+        initialPosition = Vec3d(0.0, 0.0, 0.0);
+        relativePosition = Vec3d(0.0, 0.0, 0.0);
+        initialPositionSum = Vec3d(0.0, 0.0, 0.0);
+        initialPositionSamples = 0;
+    }
+};
 
 // ------------------------------------------------------------
 // Find the directory containing Tesseract.exe
@@ -27,173 +52,6 @@ filesystem::path getExecutableDirectory()
         MAX_PATH);
 
     return filesystem::path(buffer).parent_path();
-}
-
-// ------------------------------------------------------------
-// Face detection
-// ------------------------------------------------------------
-
-void detectAndDraw(
-    Mat &img,
-    Ptr<FaceDetectorYN> detector
-    //    CascadeClassifier& faceCascade,
-    //    CascadeClassifier& eyeCascade
-)
-{
-    detector->setInputSize(img.size());
-    // Mat gray;
-    Mat faces;
-    detector->detect(img, faces);
-
-    // cvtColor(img, gray, COLOR_BGR2GRAY);
-    // equalizeHist(gray, gray);
-    // vector<Rect> faces;
-    /*
-    faceCascade.detectMultiScale(
-        gray,
-        faces,
-        1.1,                // Scale factor
-        3,                  // Minimum neighbors
-        CASCADE_SCALE_IMAGE,
-        Size(80, 80)        // Minimum face size
-    );
-
-    for (const Rect& face : faces)
-    {
-        // ----------------------------------------------------
-        // Draw face rectangle
-        // ----------------------------------------------------
-
-        rectangle(
-            img,
-            face,
-            Scalar(0, 255, 0),
-            2
-        );
-
-        // ----------------------------------------------------
-        // Calculate center of head
-        // ----------------------------------------------------
-
-        Point headCenter(
-            face.x + face.width / 2,
-            face.y + face.height / 2
-        );
-
-        circle(
-            img,
-            headCenter,
-            5,
-            Scalar(0, 0, 255),
-            FILLED
-        );
-
-        // ----------------------------------------------------
-        // Display head coordinates
-        // ----------------------------------------------------
-
-        string positionText =
-            "X: " + to_string(headCenter.x) +
-            " Y: " + to_string(headCenter.y);
-
-        putText(
-            img,
-            positionText,
-            Point(face.x, face.y - 10),
-            FONT_HERSHEY_SIMPLEX,
-            0.6,
-            Scalar(0, 255, 0),
-            2
-        );
-
-        // ----------------------------------------------------
-        // Eye detection
-        // ----------------------------------------------------
-
-        if (!eyeCascade.empty())
-        {
-            Mat faceROI = gray(face);
-
-            vector<Rect> eyes;
-
-            eyeCascade.detectMultiScale(
-                faceROI,
-                eyes,
-                1.1,
-                3,
-                CASCADE_SCALE_IMAGE,
-                Size(20, 20)
-            );
-
-            for (const Rect& eye : eyes)
-            {
-                Point eyeCenter(
-                    face.x + eye.x + eye.width / 2,
-                    face.y + eye.y + eye.height / 2
-                );
-
-                int radius =
-                    cvRound((eye.width + eye.height) * 0.25);
-
-                circle(
-                    img,
-                    eyeCenter,
-                    radius,
-                    Scalar(255, 0, 0),
-                    2
-                );
-            }
-        }
-    }
-*/
-
-    for (int i = 0; i < faces.rows; ++i)
-    {
-        int x = cvRound(faces.at<float>(i, 0));
-        int y = cvRound(faces.at<float>(i, 1));
-        int width = cvRound(faces.at<float>(i, 2));
-        int height = cvRound(faces.at<float>(i, 3));
-
-        Rect face(
-            x,
-            y,
-            width,
-            height);
-        rectangle(
-            img,
-            face,
-            Scalar(0, 255, 0),
-            2);
-        Point headCenter(
-            x + width / 2,
-            y + height / 2);
-        circle(
-            img,
-            headCenter,
-            5,
-            Scalar(0, 0, 255),
-            FILLED);
-        putText(
-            img,
-            "X: " + to_string(headCenter.x) + " Y: " + to_string(headCenter.y),
-            Point(x, y - 10),
-            FONT_HERSHEY_SIMPLEX,
-            0.6,
-            Scalar(0, 255, 0),
-            2);
-    }
-    // Number of detected faces
-    string faceCount =
-        "Faces detected: " + to_string(faces.rows);
-
-    putText(
-        img,
-        faceCount,
-        Point(20, 30),
-        FONT_HERSHEY_SIMPLEX,
-        0.7,
-        Scalar(255, 255, 255),
-        2);
 }
 
 bool openCamera(int index, VideoCapture &camera, Mat &frame)
@@ -224,6 +82,161 @@ bool openCamera(int index, VideoCapture &camera, Mat &frame)
     return false;
 }
 
+vector<dlib::rectangle> findFaces(
+    const Mat &frame,
+    dlib::frontal_face_detector &faceDetector)
+{
+    dlib::cv_image<dlib::bgr_pixel> dlibFrame(frame);
+    return faceDetector(dlibFrame);
+}
+
+Mat createApproximateCameraMatrix(const Size &imageSize)
+{
+    constexpr double assumedHorizontalFovDegrees = 70.0;
+    const double horizontalFovRadians = assumedHorizontalFovDegrees * CV_PI / 180.0;
+    const double focalLength = imageSize.width / (2.0 * tan(horizontalFovRadians / 2.0));
+
+    return (Mat_<double>(3, 3) << focalLength, 0.0, imageSize.width / 2.0,
+            0.0, focalLength, imageSize.height / 2.0,
+            0.0, 0.0, 1.0);
+}
+
+void detectAndDrawDlib(
+    Mat &image,
+    dlib::frontal_face_detector &faceDetector,
+    const dlib::shape_predictor &landmarkPredictor,
+    const Mat &cameraMatrix,
+    const Mat &distortionCoefficients,
+    FacePositionState &position)
+{
+    dlib::cv_image<dlib::bgr_pixel> dlibImage(image);
+    const auto faces = faceDetector(dlibImage);
+    const vector<Point3d> modelPoints = {
+        Point3d(0.0, 0.0, 0.0),
+        Point3d(0.0, -63.0, -12.0),
+        Point3d(-34.0, 32.0, -12.0),
+        Point3d(34.0, 32.0, -12.0),
+        Point3d(-28.0, -28.0, -8.0),
+        Point3d(28.0, -28.0, -8.0)};
+    const int poseLandmarkIndexes[] = {30, 8, 36, 45, 48, 54};
+
+    if (!faces.empty())
+    {
+        const auto face = *max_element(
+            faces.begin(),
+            faces.end(),
+            [](const dlib::rectangle &left, const dlib::rectangle &right)
+            {
+                return left.area() < right.area();
+            });
+        const auto landmarks = landmarkPredictor(dlibImage, face);
+        rectangle(
+            image,
+            Point(static_cast<int>(face.left()), static_cast<int>(face.top())),
+            Point(static_cast<int>(face.right()), static_cast<int>(face.bottom())),
+            Scalar(0, 255, 0),
+            2);
+
+        for (unsigned long pointIndex = 0; pointIndex < landmarks.num_parts(); ++pointIndex)
+        {
+            const auto &point = landmarks.part(pointIndex);
+            circle(
+                image,
+                Point(static_cast<int>(point.x()), static_cast<int>(point.y())),
+                1,
+                Scalar(0, 255, 255),
+                FILLED);
+        }
+
+        vector<Point2d> imagePoints;
+        for (int pointIndex : poseLandmarkIndexes)
+        {
+            const auto &point = landmarks.part(pointIndex);
+            imagePoints.emplace_back(point.x(), point.y());
+        }
+
+        Mat rotationVector;
+        Mat translationVector;
+        if (solvePnP(
+                modelPoints,
+                imagePoints,
+                cameraMatrix,
+                distortionCoefficients,
+                rotationVector,
+                translationVector,
+                false,
+                SOLVEPNP_ITERATIVE))
+        {
+            position.currentPosition = Vec3d(
+                translationVector.at<double>(0),
+                translationVector.at<double>(1),
+                translationVector.at<double>(2));
+
+            if (position.initialPositionSamples < initialPoseFrameCount)
+            {
+                position.initialPositionSum += position.currentPosition;
+                ++position.initialPositionSamples;
+                if (position.initialPositionSamples == initialPoseFrameCount)
+                {
+                    position.initialPosition =
+                        position.initialPositionSum / initialPoseFrameCount;
+                }
+            }
+            else
+            {
+                position.relativePosition =
+                    position.currentPosition - position.initialPosition;
+            }
+
+            string positionText;
+            if (position.initialPositionSamples < initialPoseFrameCount)
+            {
+                positionText = "Setting reference: hold still " +
+                               to_string(position.initialPositionSamples) + "/" +
+                               to_string(initialPoseFrameCount);
+            }
+            else
+            {
+                ostringstream positionTextStream;
+                positionTextStream << fixed << setprecision(1)
+                                   << "dX: " << position.relativePosition[0] << " mm  "
+                                   << "dY: " << position.relativePosition[1] << " mm  "
+                                   << "dZ: " << position.relativePosition[2] << " mm  "
+                                   << "Z: " << position.currentPosition[2] << " mm";
+                positionText = positionTextStream.str();
+            }
+
+            putText(
+                image,
+                positionText,
+                Point(static_cast<int>(face.left()), static_cast<int>(face.top()) - 10),
+                FONT_HERSHEY_SIMPLEX,
+                0.55,
+                Scalar(0, 255, 0),
+                2);
+        }
+    }
+
+    putText(
+        image,
+        "Faces detected: " + to_string(faces.size()),
+        Point(20, 30),
+        FONT_HERSHEY_SIMPLEX,
+        0.7,
+        Scalar(255, 255, 255),
+        2);
+    putText(
+        image,
+        position.initialPositionSamples < initialPoseFrameCount
+            ? "Hold still to set starting position"
+            : "Relative movement | R: reset starting position",
+        Point(20, 58),
+        FONT_HERSHEY_SIMPLEX,
+        0.6,
+        Scalar(255, 255, 255),
+        2);
+}
+
 // ------------------------------------------------------------
 // Main
 // ------------------------------------------------------------
@@ -233,97 +246,48 @@ int main()
     cout << "Starting Tesseract Head Tracker...\n";
 
     // --------------------------------------------------------
-    // Find Haar cascade files
+    // Resolve runtime files
     // --------------------------------------------------------
 
     filesystem::path exeDirectory =
         getExecutableDirectory();
-    /*
-        filesystem::path faceCascadePath =
-            exeDirectory /
-            "data" /
-            "haarcascades" /
-            "haarcascade_frontalface_default.xml";
-
-        filesystem::path eyeCascadePath =
-            exeDirectory /
-            "data" /
-            "haarcascades" /
-            "haarcascade_eye_tree_eyeglasses.xml";
-    */
-    filesystem::path modelPath =
+    filesystem::path landmarkModelPath =
         exeDirectory /
         ".." /
         ".." /
         ".." /
         ".." /
         "custom" /
-        "face_detection_yunet_2026may.onnx";
+        "shape_predictor_68_face_landmarks.dat";
 
-    // cout << "Executable directory:\n";
-    // cout << exeDirectory << "\n\n";
-
-    // cout << "Face cascade:\n";
-    // cout << faceCascadePath << "\n\n";
-    cout << "YuNet model:\n";
-    cout << modelPath << "\n\n";
-    // --------------------------------------------------------
-    // Load classifiers
-    // --------------------------------------------------------
-
-    CascadeClassifier faceCascade;
-    CascadeClassifier eyeCascade;
-
-    if (!filesystem::exists(modelPath))
+    cout << "Dlib landmark model:\n"
+         << landmarkModelPath << "\n\n";
+    if (!filesystem::exists(landmarkModelPath))
     {
-        cerr << "ERROR: YuNet model file does not exist:\n";
-        cerr << modelPath << "\n";
-        cout << "Exists: " << filesystem::exists(modelPath) << "\n";
+        cerr << "ERROR: Dlib 68-point predictor model was not found:\n"
+             << landmarkModelPath << "\n"
+             << "Place shape_predictor_68_face_landmarks.dat in the repository's custom folder.\n";
         return 1;
     }
-    /*
-    if (!faceCascade.load(faceCascadePath.string()))
-    {
-        cerr << "ERROR: Could not load face cascade:\n";
-        cerr << faceCascadePath << "\n";
 
+    dlib::frontal_face_detector faceDetector = dlib::get_frontal_face_detector();
+    dlib::shape_predictor landmarkPredictor;
+    try
+    {
+        dlib::deserialize(landmarkModelPath.string()) >> landmarkPredictor;
+    }
+    catch (const exception &error)
+    {
+        cerr << "ERROR: Could not load the dlib landmark model: " << error.what() << "\n";
         return 1;
     }
-    */
-    cout << "Face cascade loaded.\n";
-    /*
-    if (!eyeCascade.load(eyeCascadePath.string()))
-    {
-        cerr << "WARNING: Could not load eye cascade:\n";
-        cerr << eyeCascadePath << "\n";
-        cerr << "Face tracking will continue without eyes.\n";
-    }
-    else
-    {
-        cout << "Eye cascade loaded.\n";
-    }
-    */
 
     // --------------------------------------------------------
     // Open webcam
     // --------------------------------------------------------
 
-    Ptr<FaceDetectorYN> detector = FaceDetectorYN::create(
-        modelPath.string(),
-        "",
-        Size(320, 320),
-        0.9f,
-        0.3f,
-        500);
-
-    if (detector.empty())
-    {
-        cerr << "ERROR: Could not create YuNet face detector.\n";
-        return 1;
-    }
-
     cout << "Opening webcam...\n";
-    cout << "YuNet model loaded successfully.\n";
+    cout << "Dlib face detector and landmark model loaded successfully.\n";
 
     VideoCapture camera;
     Mat frame;
@@ -351,10 +315,8 @@ int main()
                     break;
                 }
 
-                detector->setInputSize(frame.size());
-                Mat faces;
-                detector->detect(frame, faces);
-                consecutiveFaceFrames = faces.rows > 0 ? consecutiveFaceFrames + 1 : 0;
+                const auto faces = findFaces(frame, faceDetector);
+                consecutiveFaceFrames = faces.empty() ? 0 : consecutiveFaceFrames + 1;
 
                 Mat preview = frame.clone();
                 putText(
@@ -449,8 +411,13 @@ int main()
         return 0;
     }
 
+    Mat cameraMatrix = createApproximateCameraMatrix(frame.size());
+    Mat distortionCoefficients = Mat::zeros(5, 1, CV_64F);
+
     cout << "Selected camera index " << cameraIndex << ".\n";
-    cout << "Press ESC or Q to quit.\n";
+    cout << "Using an approximate 70-degree horizontal field of view.\n";
+    cout << "Hold still while the starting position is averaged. Press R to recenter, ESC or Q to quit.\n";
+    FacePositionState facePosition;
     // --------------------------------------------------------
     // Camera loop
     // --------------------------------------------------------
@@ -470,9 +437,13 @@ int main()
         }
 
         // Detect face + eyes
-        detectAndDraw(
+        detectAndDrawDlib(
             frame,
-            detector);
+            faceDetector,
+            landmarkPredictor,
+            cameraMatrix,
+            distortionCoefficients,
+            facePosition);
 
         // Show result
         imshow(
@@ -481,6 +452,12 @@ int main()
 
         char key =
             static_cast<char>(waitKey(1));
+
+        if (key == 'r' || key == 'R')
+        {
+            facePosition.reset();
+            cout << "Hold still to set a new starting position.\n";
+        }
 
         if (
             key == 27 ||
