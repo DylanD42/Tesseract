@@ -24,8 +24,7 @@ filesystem::path getExecutableDirectory()
     GetModuleFileNameA(
         NULL,
         buffer,
-        MAX_PATH
-    );
+        MAX_PATH);
 
     return filesystem::path(buffer).parent_path();
 }
@@ -35,20 +34,20 @@ filesystem::path getExecutableDirectory()
 // ------------------------------------------------------------
 
 void detectAndDraw(
-    Mat& img,
+    Mat &img,
     Ptr<FaceDetectorYN> detector
-//    CascadeClassifier& faceCascade,
-//    CascadeClassifier& eyeCascade
+    //    CascadeClassifier& faceCascade,
+    //    CascadeClassifier& eyeCascade
 )
 {
     detector->setInputSize(img.size());
-    //Mat gray;
+    // Mat gray;
     Mat faces;
     detector->detect(img, faces);
 
-    //cvtColor(img, gray, COLOR_BGR2GRAY);
-    //equalizeHist(gray, gray);
-    //vector<Rect> faces;
+    // cvtColor(img, gray, COLOR_BGR2GRAY);
+    // equalizeHist(gray, gray);
+    // vector<Rect> faces;
     /*
     faceCascade.detectMultiScale(
         gray,
@@ -148,7 +147,8 @@ void detectAndDraw(
     }
 */
 
-    for (int i = 0; i < faces.rows; ++i){
+    for (int i = 0; i < faces.rows; ++i)
+    {
         int x = cvRound(faces.at<float>(i, 0));
         int y = cvRound(faces.at<float>(i, 1));
         int width = cvRound(faces.at<float>(i, 2));
@@ -158,25 +158,21 @@ void detectAndDraw(
             x,
             y,
             width,
-            height
-        );
+            height);
         rectangle(
             img,
             face,
             Scalar(0, 255, 0),
-            2
-        );
+            2);
         Point headCenter(
             x + width / 2,
-            y + height / 2
-        );
+            y + height / 2);
         circle(
             img,
             headCenter,
             5,
             Scalar(0, 0, 255),
-            FILLED
-        );
+            FILLED);
         putText(
             img,
             "X: " + to_string(headCenter.x) + " Y: " + to_string(headCenter.y),
@@ -184,8 +180,7 @@ void detectAndDraw(
             FONT_HERSHEY_SIMPLEX,
             0.6,
             Scalar(0, 255, 0),
-            2
-        );
+            2);
     }
     // Number of detected faces
     string faceCount =
@@ -198,8 +193,35 @@ void detectAndDraw(
         FONT_HERSHEY_SIMPLEX,
         0.7,
         Scalar(255, 255, 255),
-        2
-    );
+        2);
+}
+
+bool openCamera(int index, VideoCapture &camera, Mat &frame)
+{
+    const int backends[] = {CAP_DSHOW, CAP_MSMF};
+
+    for (int backend : backends)
+    {
+        camera.release();
+
+        if (!camera.open(index, backend))
+        {
+            continue;
+        }
+
+        for (int attempt = 0; attempt < 10; ++attempt)
+        {
+            if (camera.read(frame) && !frame.empty())
+            {
+                return true;
+            }
+
+            Sleep(100);
+        }
+    }
+
+    camera.release();
+    return false;
 }
 
 // ------------------------------------------------------------
@@ -216,34 +238,33 @@ int main()
 
     filesystem::path exeDirectory =
         getExecutableDirectory();
-/*
-    filesystem::path faceCascadePath =
+    /*
+        filesystem::path faceCascadePath =
+            exeDirectory /
+            "data" /
+            "haarcascades" /
+            "haarcascade_frontalface_default.xml";
+
+        filesystem::path eyeCascadePath =
+            exeDirectory /
+            "data" /
+            "haarcascades" /
+            "haarcascade_eye_tree_eyeglasses.xml";
+    */
+    filesystem::path modelPath =
         exeDirectory /
-        "data" /
-        "haarcascades" /
-        "haarcascade_frontalface_default.xml";
+        ".." /
+        ".." /
+        ".." /
+        ".." /
+        "custom" /
+        "face_detection_yunet_2026may.onnx";
 
-    filesystem::path eyeCascadePath =
-        exeDirectory /
-        "data" /
-        "haarcascades" /
-        "haarcascade_eye_tree_eyeglasses.xml";
-*/
-filesystem::path modelPath =
-    exeDirectory /
-    ".." /
-    ".." /
-    ".." /
-    ".." / 
-    "custom" /
-    "face_detection_yunet_2026may.onnx";
+    // cout << "Executable directory:\n";
+    // cout << exeDirectory << "\n\n";
 
-
-    //cout << "Executable directory:\n";
-    //cout << exeDirectory << "\n\n";
-
-    //cout << "Face cascade:\n";
-    //cout << faceCascadePath << "\n\n";
+    // cout << "Face cascade:\n";
+    // cout << faceCascadePath << "\n\n";
     cout << "YuNet model:\n";
     cout << modelPath << "\n\n";
     // --------------------------------------------------------
@@ -287,15 +308,13 @@ filesystem::path modelPath =
     // Open webcam
     // --------------------------------------------------------
 
-
     Ptr<FaceDetectorYN> detector = FaceDetectorYN::create(
         modelPath.string(),
         "",
         Size(320, 320),
         0.9f,
         0.3f,
-        500
-    );
+        500);
 
     if (detector.empty())
     {
@@ -306,85 +325,132 @@ filesystem::path modelPath =
     cout << "Opening webcam...\n";
     cout << "YuNet model loaded successfully.\n";
 
+    VideoCapture camera;
+    Mat frame;
+    int cameraIndex = 0;
+    bool cameraSelected = false;
+    bool quitRequested = false;
+    cout << "Searching camera indexes for a face. Show your face to the camera; press Q or Esc to cancel.\n";
 
-VideoCapture camera;
-Mat frame;
-
-// Try DirectShow first
-cout << "Trying DirectShow...\n";
-
-camera.open(0, CAP_DSHOW);
-
-if (camera.isOpened())
-{
-    Sleep(1000);
-
-    bool gotFrame = false;
-
-    for (int i = 0; i < 30; ++i)
+    while (!cameraSelected && !quitRequested)
     {
-        if (camera.grab() && camera.retrieve(frame))
+        for (int candidateIndex = 0; candidateIndex < 10 && !cameraSelected && !quitRequested; ++candidateIndex)
         {
-            if (!frame.empty())
+            cout << "Checking camera index " << candidateIndex << "...\n";
+            if (!openCamera(candidateIndex, camera, frame))
             {
-                gotFrame = true;
-                break;
+                continue;
             }
-        }
 
-        Sleep(100);
-    }
-
-    if (!gotFrame)
-    {
-        cout << "DirectShow opened but could not get frames.\n";
-        camera.release();
-    }
-}
-
-// If DirectShow failed, try MSMF
-if (!camera.isOpened())
-{
-    cout << "Trying Media Foundation...\n";
-
-    camera.open(0, CAP_MSMF);
-
-    if (camera.isOpened())
-    {
-        Sleep(1000);
-
-        bool gotFrame = false;
-
-        for (int i = 0; i < 30; ++i)
-        {
-            if (camera.grab() && camera.retrieve(frame))
+            int consecutiveFaceFrames = 0;
+            bool declinedCamera = false;
+            for (int attempt = 0; attempt < 30; ++attempt)
             {
-                if (!frame.empty())
+                if (!camera.read(frame) || frame.empty())
                 {
-                    gotFrame = true;
+                    break;
+                }
+
+                detector->setInputSize(frame.size());
+                Mat faces;
+                detector->detect(frame, faces);
+                consecutiveFaceFrames = faces.rows > 0 ? consecutiveFaceFrames + 1 : 0;
+
+                Mat preview = frame.clone();
+                putText(
+                    preview,
+                    "Checking camera " + to_string(candidateIndex) + " for a face | Q: quit",
+                    Point(20, 30),
+                    FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    Scalar(0, 255, 255),
+                    2);
+                imshow("Searching for webcam", preview);
+
+                char key = static_cast<char>(waitKey(1));
+                if (key == 'q' || key == 'Q' || key == 27)
+                {
+                    quitRequested = true;
+                    break;
+                }
+
+                if (consecutiveFaceFrames >= 3)
+                {
+                    cout << "Face found on camera index " << candidateIndex
+                         << ". Press Enter to use it, N to keep cycling, or Q to quit.\n";
+
+                    while (true)
+                    {
+                        if (!camera.read(frame) || frame.empty())
+                        {
+                            declinedCamera = true;
+                            break;
+                        }
+
+                        Mat confirmation = frame.clone();
+                        putText(
+                            confirmation,
+                            "Face found on camera " + to_string(candidateIndex) +
+                                " | Enter: use | N: next | Q: quit",
+                            Point(20, 30),
+                            FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            Scalar(0, 255, 255),
+                            2);
+                        imshow("Searching for webcam", confirmation);
+
+                        char confirmationKey = static_cast<char>(waitKey(1));
+                        if (confirmationKey == 13 || confirmationKey == 10)
+                        {
+                            cameraSelected = true;
+                            cameraIndex = candidateIndex;
+                            cout << "Selected camera index " << cameraIndex << ".\n";
+                            break;
+                        }
+                        if (confirmationKey == 'n' || confirmationKey == 'N')
+                        {
+                            declinedCamera = true;
+                            break;
+                        }
+                        if (confirmationKey == 'q' || confirmationKey == 'Q' || confirmationKey == 27)
+                        {
+                            quitRequested = true;
+                            break;
+                        }
+                    }
+
                     break;
                 }
             }
 
-            Sleep(100);
+            if (!cameraSelected)
+            {
+                camera.release();
+            }
+
+            if (declinedCamera)
+            {
+                cout << "Continuing camera scan.\n";
+            }
         }
 
-        if (!gotFrame)
+        if (!cameraSelected && !quitRequested)
         {
-            cout << "MSMF opened but could not get frames.\n";
-            camera.release();
+            cout << "No face found; scanning camera indexes again.\n";
+            Sleep(500);
         }
     }
-}
 
-if (!camera.isOpened())
-{
-    cerr << "ERROR: Could not initialize webcam.\n";
-    return 1;
-}
+    destroyWindow("Searching for webcam");
+    if (quitRequested)
+    {
+        camera.release();
+        destroyAllWindows();
+        return 0;
+    }
 
-cout << "Camera opened successfully!\n";
-cout << "Press ESC or Q to quit.\n";    
+    cout << "Selected camera index " << cameraIndex << ".\n";
+    cout << "Press ESC or Q to quit.\n";
     // --------------------------------------------------------
     // Camera loop
     // --------------------------------------------------------
@@ -403,20 +469,15 @@ cout << "Press ESC or Q to quit.\n";
             break;
         }
 
-        // Mirror the camera like a normal webcam preview
-        flip(frame, frame, 1);
-
         // Detect face + eyes
         detectAndDraw(
             frame,
-            detector
-        );
+            detector);
 
         // Show result
         imshow(
             "Tesseract Head Tracker",
-            frame
-        );
+            frame);
 
         char key =
             static_cast<char>(waitKey(1));
@@ -424,8 +485,7 @@ cout << "Press ESC or Q to quit.\n";
         if (
             key == 27 ||
             key == 'q' ||
-            key == 'Q'
-        )
+            key == 'Q')
         {
             break;
         }
