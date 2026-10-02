@@ -3,6 +3,11 @@ Adding a 3rd dimension to computer screens using head tracking and off point pro
 
 Repository for our senior design project! 
 
+to build and run the project:
+cmake --preset windows-msvc
+cmake --build --preset release
+.\build\msvc-opencv413\bin\Release\Tesseract.exe
+
 ## Face pose setup
 
 The tracker uses dlib's 68-point facial landmark predictor and OpenCV `solvePnP`.
