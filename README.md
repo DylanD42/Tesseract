@@ -6,7 +6,17 @@ Repository for our senior design project!
 to build and run the project:
 cmake --preset windows-msvc
 cmake --build --preset release
-.\build\msvc-opencv413\bin\Release\Tesseract.exe
+.\build\combined\bin\Release\HeadTracking.exe
+.\build\combined\bin\Release\RaylibScene.exe
+
+
+to build only one program 
+cmake --build --preset headtracking
+cmake --build --preset raylib
+
+
+to clean the workplace for a clean build
+cmake --build --preset release --target clean
 
 ## Face pose setup
 

@@ -1,3 +1,4 @@
+
 {
   "version": 3,
   "configurePresets": [
@@ -6,22 +7,44 @@
       "displayName": "Visual Studio 2026 x64",
       "generator": "Visual Studio 18 2026",
       "architecture": "x64",
-      "binaryDir": "${sourceDir}/build/msvc-opencv413"
+      "binaryDir": "${sourceDir}/build/combined"
     }
   ],
   "buildPresets": [
     {
       "name": "release",
+      "displayName": "Build Release",
       "configurePreset": "windows-msvc",
       "configuration": "Release",
-      "targets": ["Tesseract"],
+      "targets": [
+        "HeadTracking",
+        "RaylibScene"
+      ],
       "jobs": 4
     },
     {
       "name": "debug",
+      "displayName": "Build Debug",
       "configurePreset": "windows-msvc",
       "configuration": "Debug",
-      "targets": ["Tesseract"],
+      "targets": [
+        "HeadTracking",
+        "RaylibScene"
+      ],
+      "jobs": 4
+    },
+    {
+      "name": "headtracking",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release",
+      "targets": ["HeadTracking"],
+      "jobs": 4
+    },
+    {
+      "name": "raylib",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release",
+      "targets": ["RaylibScene"],
       "jobs": 4
     }
   ]
