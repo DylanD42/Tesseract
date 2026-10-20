@@ -26,6 +26,7 @@ endif()
 
 option(BUILD_HEADTRACKING "Build head tracking application" ON)
 option(BUILD_RAYLIB_SCENE "Build raylib application" ON)
+option(BUILD_PARALLAX "Build integrated parallax application" ON)
 
 # ============================================================
 # Output directories
@@ -39,7 +40,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
 # raylib
 # ============================================================
 
-if(BUILD_RAYLIB_SCENE)
+if(BUILD_RAYLIB_SCENE OR BUILD_PARALLAX)
 
     set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
@@ -49,28 +50,13 @@ if(BUILD_RAYLIB_SCENE)
         raylib_build
     )
 
-    add_executable(RaylibScene
-        src/raylib/newplace.cpp
-    )
-
-    # If newplace.cpp contains supporting functions
-    # and does NOT define its own main(), uncomment:
-    #
-    # target_sources(RaylibScene PRIVATE
-    #     src/raylib/newplace.cpp
-    # )
-
-    target_link_libraries(RaylibScene PRIVATE
-        raylib
-    )
-
 endif()
 
 # ============================================================
-# Head Tracking
+# OpenCV and dlib
 # ============================================================
 
-if(BUILD_HEADTRACKING)
+if(BUILD_HEADTRACKING OR BUILD_PARALLAX)
 
     include(FetchContent)
 
@@ -139,86 +125,128 @@ if(BUILD_HEADTRACKING)
     )
 
     # --------------------------------------------------------
-    # HeadTracking executable
+    # Shared OpenCV and dlib configuration
     # --------------------------------------------------------
+
+    # Reuse these settings for both applications.
+
+    function(configure_headtracking_libraries target_name)
+
+        target_include_directories(${target_name} PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/include"
+
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/core/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/imgproc/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/imgcodecs/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/highgui/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/videoio/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/calib3d/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/objdetect/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/dnn/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/features2d/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/flann/include"
+
+            # Generated OpenCV headers
+            "${CMAKE_CURRENT_BINARY_DIR}/opencv_build"
+            "${CMAKE_CURRENT_BINARY_DIR}"
+        )
+
+        target_link_libraries(${target_name} PRIVATE
+            dlib::dlib
+
+            opencv_core
+            opencv_imgproc
+            opencv_imgcodecs
+            opencv_videoio
+            opencv_highgui
+            opencv_calib3d
+            opencv_objdetect
+            opencv_dnn
+        )
+
+        # Copy facial landmark models
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/custom")
+
+            add_custom_command(
+                TARGET ${target_name} POST_BUILD
+
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${CMAKE_CURRENT_SOURCE_DIR}/custom"
+                    "$<TARGET_FILE_DIR:${target_name}>/custom"
+
+                COMMENT "Copying models for ${target_name}..."
+            )
+
+        endif()
+
+        # Copy Haar cascades
+        if(EXISTS
+           "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/data/haarcascades")
+
+            add_custom_command(
+                TARGET ${target_name} POST_BUILD
+
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/data/haarcascades"
+                    "$<TARGET_FILE_DIR:${target_name}>/data/haarcascades"
+
+                COMMENT "Copying Haar cascades for ${target_name}..."
+            )
+
+        endif()
+
+    endfunction()
+
+endif()
+
+# ============================================================
+# Original raylib scene
+# ============================================================
+
+if(BUILD_RAYLIB_SCENE)
+
+    add_executable(RaylibScene
+        src/raylib/newplace.cpp
+    )
+
+    target_link_libraries(RaylibScene PRIVATE
+        raylib
+    )
+
+endif()
+
+# ============================================================
+# Original head tracking application
+# ============================================================
+
+if(BUILD_HEADTRACKING)
 
     add_executable(HeadTracking
         src/headtracking/main.cpp
     )
 
-    target_include_directories(HeadTracking PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    configure_headtracking_libraries(HeadTracking)
 
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/include"
+endif()
 
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/core/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/imgproc/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/imgcodecs/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/highgui/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/videoio/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/calib3d/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/objdetect/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/dnn/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/features2d/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/modules/flann/include"
+# ============================================================
+# NEW: Integrated head tracking + raylib parallax
+# ============================================================
 
-        # Generated OpenCV headers
-        "${CMAKE_CURRENT_BINARY_DIR}/opencv_build"
-        "${CMAKE_CURRENT_BINARY_DIR}"
+if(BUILD_PARALLAX)
+
+    add_executable(TesseractParallax
+        src/both/Tesseract_Integrated_Parallax.cpp
     )
 
-    # --------------------------------------------------------
     # Link OpenCV and dlib
-    # --------------------------------------------------------
+    configure_headtracking_libraries(TesseractParallax)
 
-    target_link_libraries(HeadTracking PRIVATE
-        dlib::dlib
-
-        opencv_core
-        opencv_imgproc
-        opencv_imgcodecs
-        opencv_videoio
-        opencv_highgui
-        opencv_calib3d
-        opencv_objdetect
-        opencv_dnn
+    # Link raylib
+    target_link_libraries(TesseractParallax PRIVATE
+        raylib
     )
-
-    # --------------------------------------------------------
-    # Copy model files
-    # --------------------------------------------------------
-
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/custom")
-
-        add_custom_command(
-            TARGET HeadTracking POST_BUILD
-
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/custom"
-                "$<TARGET_FILE_DIR:HeadTracking>/custom"
-
-            COMMENT "Copying head tracking models..."
-        )
-
-    endif()
-
-    # --------------------------------------------------------
-    # Copy Haar cascades
-    # --------------------------------------------------------
-
-    if(EXISTS
-       "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/data/haarcascades")
-
-        add_custom_command(
-            TARGET HeadTracking POST_BUILD
-
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/data/haarcascades"
-                "$<TARGET_FILE_DIR:HeadTracking>/data/haarcascades"
-
-            COMMENT "Copying Haar cascades..."
-        )
-
-    endif()
 
 endif()
