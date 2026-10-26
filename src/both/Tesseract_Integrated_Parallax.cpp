@@ -1,6 +1,7 @@
 // Tesseract: head-tracked "window" parallax
-// dlib (face landmarks) + OpenCV (solvePnP + separate diagnostics window) + raylib (off-axis projection)
-// Link with raylib, OpenCV (core, calib3d, videoio, highgui, imgproc) and dlib.
+// YuNet (OpenCV FaceDetectorYN, face detection) + dlib (68 face landmarks) + OpenCV (solvePnP + diagnostics window) + raylib (off-axis projection)
+// Link with raylib, OpenCV (core, calib3d, videoio, highgui, imgproc, objdetect, dnn) and dlib.
+// Requires OpenCV >= 4.8 for the 2023mar YuNet model.
 #include <raylib.h>
 #include <raymath.h>
 #include <rlgl.h>
@@ -9,8 +10,8 @@
 #include <opencv2/videoio.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/objdetect.hpp>
 #include <dlib/image_processing.h>
-#include <dlib/image_processing/frontal_face_detector.h>
 #include <dlib/opencv.h>
 #include <atomic>
 #include <mutex>
@@ -56,7 +57,7 @@ namespace {
 constexpr int   kWinW = 1000, kWinH = 800;
 constexpr int   kCalibrationFrames = 30;
 constexpr float kScreenHeightUnits = 10.0f;  // world units spanned by the window height
-constexpr float kScreenPlaneZ = 5.0f;        // the "glass" sits at this world Z
+constexpr float kScreenPlaneZ = 1.0f;        // the "glass" sits at this world Z
 constexpr float kScreenCenterY = 1.0f;
 // Physical size of your monitor. Measure the visible panel height with a ruler.
 constexpr float kMonitorHeightMm = 300.0f;   // visible panel height
@@ -65,7 +66,18 @@ constexpr int   kMonitorHeightPx = 1080;     // panel vertical resolution (only 
 constexpr float kCameraOffsetXMm = 0.0f;     // + = camera right of center
 constexpr float kCameraOffsetYMm = 165.0f;   // + = camera above center
 constexpr double kCameraHFovDeg = 70.0;      // webcam horizontal FOV guess; tune if parallax feels too strong/weak
-constexpr int   kDetectWidth = 320;          // face detector runs on a downscaled frame for speed
+constexpr int   kDetectWidth = 320;          // YuNet runs on a downscaled frame for speed
+
+// YuNet settings
+constexpr float kYuNetScoreThreshold = 0.7f;
+constexpr float kYuNetNmsThreshold   = 0.3f;
+constexpr int   kYuNetTopK           = 50;
+// dlib's shape predictor was trained on boxes from its own HOG detector, which are tighter than YuNet's.
+// If landmarks look too big/small or shifted, tune these (scale around the box center, shift as fraction of box height).
+constexpr float kBoxScale  = 0.90f;
+constexpr float kBoxShiftY = 0.00f;
+
+const char* kYuNetModelAbs = R"(C:\Users\danie\Desktop\raylibteam\Tesseract\custom\face_detection_yunet_2023mar.onnx)";
 
 // Generic face model in mm, OpenCV camera convention (x right, y down, z away from camera).
 // Origin = nose tip. Order matches kLandmarkIdx below.
@@ -108,6 +120,7 @@ struct Snapshot {
     bool tracking = false;     // this frame produced a measurement
     int collected = 0, faceCount = 0;
     double reprojErr = 0;
+    double faceScore = 0;      // YuNet confidence of the chosen face
     cv::Vec3d eye{0, 0, 0};        // filtered eye position, camera space, mm
     cv::Vec3d reference{0, 0, 0};  // eye position captured during calibration
     std::string status = "Starting camera";
@@ -125,7 +138,7 @@ struct Tracker {
     int collected = 0;
     cv::Vec3d sum{0, 0, 0};
     OneEuro filt[3];
-    cv::Mat rvec, tvec, small;
+    cv::Mat rvec, tvec, small, dets;
     bool havePose = false;
     void reset() {
         collected = 0; sum = cv::Vec3d(0, 0, 0); havePose = false;
@@ -159,30 +172,53 @@ cv::Mat approximateIntrinsics(cv::Size size) {
 // -------------------------------------------------------------- tracking ----
 // `frame` is never drawn on; all markers go to `debug`.
 bool updateTracking(const cv::Mat& frame, cv::Mat& debug,
-                    dlib::frontal_face_detector& detector, const dlib::shape_predictor& predictor,
+                    cv::Ptr<cv::FaceDetectorYN>& yunet, const dlib::shape_predictor& predictor,
                     const cv::Mat& K, const cv::Mat& dist, double dt, Tracker& t) {
     Snapshot& s = t.snap;
     s.tracking = false;
 
     const double scale = std::min(1.0, double(kDetectWidth) / frame.cols);
     cv::resize(frame, t.small, cv::Size(), scale, scale, cv::INTER_AREA);
-    dlib::cv_image<dlib::bgr_pixel> smallImg(t.small);
     dlib::cv_image<dlib::bgr_pixel> fullImg(frame);
 
-    const auto faces = detector(smallImg);
-    s.faceCount = static_cast<int>(faces.size());
-    if (faces.empty()) { s.status = "No face detected"; t.havePose = false; return false; }
+    // ---- YuNet face detection (BGR input) ----
+    yunet->setInputSize(t.small.size());
+    t.dets.release();
+    yunet->detect(t.small, t.dets);   // Nx15: x y w h, 5 landmarks (x,y), score
+    s.faceCount = t.dets.empty() ? 0 : t.dets.rows;
+    if (t.dets.empty()) { s.status = "No face detected"; s.faceScore = 0; t.havePose = false; return false; }
 
-    const dlib::rectangle best = *std::max_element(faces.begin(), faces.end(),
-        [](const dlib::rectangle& a, const dlib::rectangle& b) { return a.area() < b.area(); });
-    const dlib::rectangle face(std::lround(best.left() / scale), std::lround(best.top() / scale),
-                               std::lround(best.right() / scale), std::lround(best.bottom() / scale));
+    int bestRow = 0;
+    float bestArea = -1.0f;
+    for (int r = 0; r < t.dets.rows; ++r) {
+        const float area = t.dets.at<float>(r, 2) * t.dets.at<float>(r, 3);
+        if (area > bestArea) { bestArea = area; bestRow = r; }
+    }
+    const float* d = t.dets.ptr<float>(bestRow);
+    s.faceScore = d[14];
 
-    const auto lm = predictor(fullImg, face);   // landmarks on the clean full-res frame
+    // YuNet box -> full-res coordinates
+    const double bx = d[0] / scale, by = d[1] / scale, bw = d[2] / scale, bh = d[3] / scale;
+    cv::rectangle(debug, cv::Rect(cvRound(bx), cvRound(by), cvRound(bw), cvRound(bh)), cv::Scalar(0, 255, 0), 2);
+    for (int i = 0; i < 5; ++i)  // YuNet's own 5 landmarks (magenta)
+        cv::circle(debug, cv::Point(cvRound(d[4 + 2 * i] / scale), cvRound(d[5 + 2 * i] / scale)), 3,
+                   cv::Scalar(255, 0, 255), cv::FILLED);
+
+    // Convert to a box closer to what dlib's predictor expects: scale about center, optional vertical shift.
+    const double cxBox = bx + bw * 0.5, cyBox = by + bh * 0.5 + bh * kBoxShiftY;
+    const double hw = bw * 0.5 * kBoxScale, hh = bh * 0.5 * kBoxScale;
+    const long L = std::max(0L, std::lround(cxBox - hw));
+    const long T = std::max(0L, std::lround(cyBox - hh));
+    const long R = std::min(long(frame.cols - 1), std::lround(cxBox + hw));
+    const long B = std::min(long(frame.rows - 1), std::lround(cyBox + hh));
+    if (R - L < 20 || B - T < 20) { s.status = "Face box too small"; t.havePose = false; return false; }
+    const dlib::rectangle face(L, T, R, B);
+    cv::rectangle(debug, cv::Point(int(L), int(T)), cv::Point(int(R), int(B)), cv::Scalar(255, 128, 0), 1);
+
+    // ---- dlib 68 landmarks on the clean full-res frame ----
+    const auto lm = predictor(fullImg, face);
     if (lm.num_parts() != 68) { s.status = "Invalid landmark count"; return false; }
 
-    cv::rectangle(debug, cv::Point(face.left(), face.top()), cv::Point(face.right(), face.bottom()),
-                  cv::Scalar(0, 255, 0), 2);
     for (unsigned long i = 0; i < lm.num_parts(); ++i)
         cv::circle(debug, cv::Point(lm.part(i).x(), lm.part(i).y()), 2, cv::Scalar(0, 255, 255), cv::FILLED);
 
@@ -218,9 +254,9 @@ bool updateTracking(const cv::Mat& frame, cv::Mat& debug,
     }
     t.havePose = true;
 
-    cv::Mat R; cv::Rodrigues(t.rvec, R);
+    cv::Mat Rm; cv::Rodrigues(t.rvec, Rm);
     cv::Mat eyeLocal = (cv::Mat_<double>(3, 1) << kEyeCenterInFaceMm.x, kEyeCenterInFaceMm.y, kEyeCenterInFaceMm.z);
-    cv::Mat e = R * eyeLocal + t.tvec;
+    cv::Mat e = Rm * eyeLocal + t.tvec;
     cv::Vec3d raw(e.at<double>(0), e.at<double>(1), e.at<double>(2));
     if (!(std::isfinite(raw[0]) && std::isfinite(raw[1]) && std::isfinite(raw[2]))) {
         s.status = "Invalid eye position"; t.havePose = false; return false;
@@ -244,9 +280,9 @@ bool updateTracking(const cv::Mat& frame, cv::Mat& debug,
     return true;
 }
 
-// Camera + dlib + OpenCV window all live on this thread so raylib stays at 60 FPS.
+// Camera + YuNet + dlib + OpenCV window all live on this thread so raylib stays at 60 FPS.
 void trackingWorker(cv::VideoCapture& capture, cv::Size camSize,
-                    dlib::frontal_face_detector& detector, const dlib::shape_predictor& predictor,
+                    cv::Ptr<cv::FaceDetectorYN>& yunet, const dlib::shape_predictor& predictor,
                     Shared& shared) {
     const char* kWin = "Tesseract - Webcam Diagnostics";
     cv::namedWindow(kWin, cv::WINDOW_NORMAL);
@@ -268,7 +304,7 @@ void trackingWorker(cv::VideoCapture& capture, cv::Size camSize,
             last = now;
 
             debug = frame.clone();
-            updateTracking(frame, debug, detector, predictor, K, dist, dt, t);
+            updateTracking(frame, debug, yunet, predictor, K, dist, dt, t);
             cv::flip(debug, debug, 1);  // mirrored for readability only; tracking uses the raw frame
 
             const Snapshot& s = t.snap;
@@ -277,7 +313,7 @@ void trackingWorker(cv::VideoCapture& capture, cv::Size camSize,
             };
             put("Faces: " + std::to_string(s.faceCount) + " | " + s.status, 24,
                 s.tracking ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 140, 255));
-            put(cv::format("PnP reprojection: %.2f px", s.reprojErr), 48);
+            put(cv::format("YuNet score: %.2f | PnP reprojection: %.2f px", s.faceScore, s.reprojErr), 48);
             if (s.valid)
                 put(cv::format("Eye mm (filtered): X %.1f  Y %.1f  Z %.1f", s.eye[0], s.eye[1], s.eye[2]), 72);
             put(cv::format("Calibration: %d/%d", s.collected, kCalibrationFrames), 96);
@@ -324,7 +360,7 @@ void ApplyOffAxisProjection(const ViewerPose& v, float screenW, float screenH,
     const float left   = nearPlane * (-screenW * 0.5f - v.position.x) / screenDist;
     const float right  = nearPlane * ( screenW * 0.5f - v.position.x) / screenDist;
     const float bottom = nearPlane * (-screenH * 0.5f - (v.position.y - kScreenCenterY)) / screenDist;
-    const float top    = nearPlane * ( screenH * 0.5f - (v.position.y - kScreenCenterY)) / screenDist;
+    const float top    = nearPlane * (screenH * 0.5f - (v.position.y - kScreenCenterY)) / screenDist;
     rlSetMatrixProjection(MatrixFrustum(left, right, bottom, top, nearPlane, farPlane));
 }
 } // namespace
@@ -335,16 +371,32 @@ int main(int argc, char** argv) {
     const float screenHeight = kScreenHeightUnits;
     const float nearPlane = 0.05f;
 
+    // ---- dlib landmark model ----
     fs::path model = fs::current_path() / "custom/shape_predictor_68_face_landmarks.dat";
     if (!fs::exists(model))
         model = fs::current_path() / "build/combined/bin/Release/custom/shape_predictor_68_face_landmarks.dat";
     if (!fs::exists(model)) { std::cerr << "Missing dlib predictor: " << model << "\n"; return 1; }
 
-    dlib::frontal_face_detector faceDetector = dlib::get_frontal_face_detector();
     dlib::shape_predictor predictor;
     try { dlib::deserialize(model.string()) >> predictor; }
     catch (const std::exception& e) { std::cerr << e.what() << "\n"; return 1; }
 
+    // ---- YuNet detector model ----
+    fs::path yunetModel = kYuNetModelAbs;
+    if (!fs::exists(yunetModel))
+        yunetModel = fs::current_path() / "custom/face_detection_yunet_2023mar.onnx";
+    if (!fs::exists(yunetModel))
+        yunetModel = fs::current_path() / "build/combined/bin/Release/custom/face_detection_yunet_2023mar.onnx";
+    if (!fs::exists(yunetModel)) { std::cerr << "Missing YuNet model: " << yunetModel << "\n"; return 1; }
+
+    cv::Ptr<cv::FaceDetectorYN> yunet;
+    try {
+        yunet = cv::FaceDetectorYN::create(yunetModel.string(), "", cv::Size(kDetectWidth, kDetectWidth * 3 / 4),
+                                           kYuNetScoreThreshold, kYuNetNmsThreshold, kYuNetTopK);
+    } catch (const cv::Exception& e) { std::cerr << "YuNet load failed: " << e.what() << "\n"; return 1; }
+    if (yunet.empty()) { std::cerr << "YuNet load failed\n"; return 1; }
+
+    // ---- camera ----
     cv::VideoCapture capture;
     cv::Mat frame;
     const int cameraIndex = argc > 1 ? std::atoi(argv[1]) : 0;
@@ -352,7 +404,7 @@ int main(int argc, char** argv) {
     const cv::Size cameraSize = frame.size();
 
     Shared shared;
-    std::thread worker(trackingWorker, std::ref(capture), cameraSize, std::ref(faceDetector),
+    std::thread worker(trackingWorker, std::ref(capture), cameraSize, std::ref(yunet),
                        std::cref(predictor), std::ref(shared));
 
     InitWindow(kWinW, kWinH, "Tesseract head-tracked parallax");
@@ -435,9 +487,9 @@ int main(int argc, char** argv) {
         const Vector2 corners[4] = {{L, B}, {Rr, B}, {Rr, T}, {L, T}};
         for (int i = 0; i < 4; ++i) {
             const Vector2 a = corners[i], b = corners[(i + 1) % 4];
-            DrawLine3D({a.x, a.y, kScreenPlaneZ}, {b.x, b.y, kScreenPlaneZ}, DARKGRAY);
-            DrawLine3D({a.x, a.y, backZ}, {b.x, b.y, backZ}, LIGHTGRAY);
-            DrawLine3D({a.x, a.y, kScreenPlaneZ}, {a.x, a.y, backZ}, LIGHTGRAY);
+            DrawLine3D({a.x, a.y, kScreenPlaneZ}, {b.x, b.y, kScreenPlaneZ}, BLACK);
+            DrawLine3D({a.x, a.y, backZ}, {b.x, b.y, backZ}, BLACK);
+            DrawLine3D({a.x, a.y, kScreenPlaneZ}, {a.x, a.y, backZ}, BLACK);
         }
         for (const auto& shape : shapes) DrawFloatingShape(shape);
         EndMode3D();
@@ -447,8 +499,8 @@ int main(int argc, char** argv) {
         DrawText(TextFormat("Mode: %s | Eye (raylib): X %.2f Y %.2f Z %.2f",
                  physicalAlignment ? "physical" : "calibrated",
                  viewer.position.x, viewer.position.y, viewer.position.z), 10, 67, 18, DARKGRAY);
-        DrawText(TextFormat("%s | calibration %d/%d | reprojection %.1f px",
-                 snap.status.c_str(), snap.collected, kCalibrationFrames, snap.reprojErr), 10, 92, 18, DARKGRAY);
+        DrawText(TextFormat("%s | calibration %d/%d | reprojection %.1f px | YuNet %.2f",
+                 snap.status.c_str(), snap.collected, kCalibrationFrames, snap.reprojErr, snap.faceScore), 10, 92, 18, DARKGRAY);
         EndDrawing();
     }
 
