@@ -5,7 +5,7 @@ using namespace std;
 // Dimensions of the window
 const int win_width = 600;
 const int win_height = 400;
-
+//this is a git test
 int main(){
 
     InitWindow(win_width, win_height, "Test window"); // Create the window instance
