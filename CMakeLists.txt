@@ -27,6 +27,7 @@ endif()
 option(BUILD_HEADTRACKING "Build head tracking application" ON)
 option(BUILD_RAYLIB_SCENE "Build raylib application" ON)
 option(BUILD_PARALLAX "Build integrated parallax application" ON)
+option(BUILD_PARALLAX_TESTS "Build Depth motion and projection tests without camera or graphics" OFF)
 
 # ============================================================
 # Output directories
@@ -58,24 +59,28 @@ endif()
 
 if(BUILD_HEADTRACKING OR BUILD_PARALLAX)
 
-    include(FetchContent)
+    # Only the separate landmark-based HeadTracking executable needs dlib.
+    if(BUILD_HEADTRACKING)
+        include(FetchContent)
 
-    # --------------------------------------------------------
-    # dlib configuration
-    # --------------------------------------------------------
+        # --------------------------------------------------------
+        # dlib configuration
+        # --------------------------------------------------------
 
-    set(DLIB_NO_GUI_SUPPORT ON CACHE BOOL "" FORCE)
-    set(DLIB_USE_CUDA OFF CACHE BOOL "" FORCE)
-    set(DLIB_JPEG_SUPPORT OFF CACHE BOOL "" FORCE)
+        set(DLIB_NO_GUI_SUPPORT ON CACHE BOOL "" FORCE)
+        set(DLIB_USE_CUDA OFF CACHE BOOL "" FORCE)
+        set(DLIB_JPEG_SUPPORT OFF CACHE BOOL "" FORCE)
 
-    FetchContent_Declare(
-        dlib
-        GIT_REPOSITORY https://github.com/davisking/dlib.git
-        GIT_TAG v19.24.6
-        GIT_SHALLOW TRUE
-    )
+        FetchContent_Declare(
+            dlib
+            GIT_REPOSITORY https://github.com/davisking/dlib.git
+            GIT_TAG v19.24.6
+            GIT_SHALLOW TRUE
+        )
 
-    FetchContent_MakeAvailable(dlib)
+        FetchContent_MakeAvailable(dlib)
+
+    endif()
 
     # --------------------------------------------------------
     # OpenCV configuration
@@ -84,10 +89,11 @@ if(BUILD_HEADTRACKING OR BUILD_PARALLAX)
     set(BUILD_WITH_STATIC_CRT ON CACHE BOOL "" FORCE)
     set(WITH_IPP OFF CACHE BOOL "" FORCE)
 
-    set(BUILD_LIST
-        "core,imgproc,imgcodecs,highgui,videoio,calib3d,objdetect,dnn"
-        CACHE STRING "" FORCE
-    )
+    set(project_opencv_modules "core,imgproc,imgcodecs,highgui,videoio,objdetect,dnn")
+    if(BUILD_HEADTRACKING)
+        string(APPEND project_opencv_modules ",calib3d")
+    endif()
+    set(BUILD_LIST "${project_opencv_modules}" CACHE STRING "" FORCE)
 
     set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(BUILD_PERF_TESTS OFF CACHE BOOL "" FORCE)
@@ -130,7 +136,7 @@ if(BUILD_HEADTRACKING OR BUILD_PARALLAX)
 
     # Reuse these settings for both applications.
 
-    function(configure_headtracking_libraries target_name)
+    function(configure_tracking_libraries target_name)
 
         target_include_directories(${target_name} PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
@@ -154,47 +160,29 @@ if(BUILD_HEADTRACKING OR BUILD_PARALLAX)
         )
 
         target_link_libraries(${target_name} PRIVATE
-            dlib::dlib
-
             opencv_core
             opencv_imgproc
             opencv_imgcodecs
             opencv_videoio
             opencv_highgui
-            opencv_calib3d
             opencv_objdetect
             opencv_dnn
         )
 
-        # Copy facial landmark models
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/custom")
-
-            add_custom_command(
-                TARGET ${target_name} POST_BUILD
-
-                COMMAND ${CMAKE_COMMAND} -E copy_directory
-                    "${CMAKE_CURRENT_SOURCE_DIR}/custom"
-                    "$<TARGET_FILE_DIR:${target_name}>/custom"
-
-                COMMENT "Copying models for ${target_name}..."
-            )
-
+        # Each executable packages only the model it uses.
+        if(target_name STREQUAL "HeadTracking")
+            set(model_name "shape_predictor_68_face_landmarks.dat")
+        else()
+            set(model_name "face_detection_yunet_2023mar.onnx")
         endif()
-
-        # Copy Haar cascades
-        if(EXISTS
-           "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/data/haarcascades")
-
-            add_custom_command(
-                TARGET ${target_name} POST_BUILD
-
-                COMMAND ${CMAKE_COMMAND} -E copy_directory
-                    "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv/data/haarcascades"
-                    "$<TARGET_FILE_DIR:${target_name}>/data/haarcascades"
-
-                COMMENT "Copying Haar cascades for ${target_name}..."
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/custom/${model_name}")
+            add_custom_command(TARGET ${target_name} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${target_name}>/custom"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CMAKE_CURRENT_SOURCE_DIR}/custom/${model_name}"
+                    "$<TARGET_FILE_DIR:${target_name}>/custom/${model_name}"
+                COMMENT "Copying ${model_name} for ${target_name}..."
             )
-
         endif()
 
     endfunction()
@@ -227,7 +215,10 @@ if(BUILD_HEADTRACKING)
         src/headtracking/main.cpp
     )
 
-    configure_headtracking_libraries(HeadTracking)
+    # Preserve the original static-library order: dlib before OpenCV's image codecs.
+    target_link_libraries(HeadTracking PRIVATE dlib::dlib)
+    configure_tracking_libraries(HeadTracking)
+    target_link_libraries(HeadTracking PRIVATE opencv_calib3d)
 
 endif()
 
@@ -238,15 +229,41 @@ endif()
 if(BUILD_PARALLAX)
 
     add_executable(TesseractParallax
-        src/both/Tesseract_Integrated_Parallax.cpp
+        src/parallax/main.cpp
+        src/parallax/headtracking.cpp
+        src/parallax/window_motion.cpp
+        src/parallax/window_controls.cpp
+        src/parallax/3Denvironment.cpp
+        src/parallax/ui.cpp
+        src/parallax/test_scene.cpp
+        src/parallax/off_axis_projection.cpp
+        src/parallax/headtracking.h
+        src/parallax/window_motion.h
+        src/parallax/window_controls.h
+        src/parallax/3Denvironment.h
+        src/parallax/ui.h
+        src/parallax/settings.h
+        src/parallax/tracking_types.h
+        src/parallax/test_scene.h
+        src/parallax/off_axis_projection.h
     )
 
-    # Link OpenCV and dlib
-    configure_headtracking_libraries(TesseractParallax)
+    # The integrated Depth app uses OpenCV face detection only.
+    configure_tracking_libraries(TesseractParallax)
 
     # Link raylib
     target_link_libraries(TesseractParallax PRIVATE
         raylib
     )
 
+endif()
+
+if(BUILD_PARALLAX_TESTS)
+    enable_testing()
+    add_executable(OffAxisProjectionTests tests/off_axis_projection_tests.cpp src/parallax/off_axis_projection.cpp)
+    target_include_directories(OffAxisProjectionTests PRIVATE src/parallax external/raylib/src)
+    add_test(NAME OffAxisProjection COMMAND OffAxisProjectionTests)
+    add_executable(WindowMotionTests tests/window_motion_tests.cpp src/parallax/window_motion.cpp)
+    target_include_directories(WindowMotionTests PRIVATE src/parallax)
+    add_test(NAME WindowMotion COMMAND WindowMotionTests)
 endif()
