@@ -56,7 +56,8 @@ filesystem::path getExecutableDirectory()
 
 bool openCamera(int index, VideoCapture &camera, Mat &frame)
 {
-    const int backends[] = {CAP_DSHOW, CAP_MSMF};
+    // DirectShow supports virtual cameras; keep automatic selection as a fallback.
+    const int backends[] = {CAP_DSHOW, CAP_MSMF, CAP_ANY};
 
     for (int backend : backends)
     {
@@ -67,7 +68,7 @@ bool openCamera(int index, VideoCapture &camera, Mat &frame)
             continue;
         }
 
-        for (int attempt = 0; attempt < 10; ++attempt)
+        for (int attempt = 0; attempt < 30; ++attempt)
         {
             if (camera.read(frame) && !frame.empty())
             {
@@ -294,7 +295,7 @@ int main()
     int cameraIndex = 0;
     bool cameraSelected = false;
     bool quitRequested = false;
-    cout << "Searching camera indexes for a face. Show your face to the camera; press Q or Esc to cancel.\n";
+    cout << "Searching cameras (including virtual cameras). Press Enter on a preview to use it, N for next, or Q to quit.\n";
 
     while (!cameraSelected && !quitRequested)
     {
@@ -321,7 +322,7 @@ int main()
                 Mat preview = frame.clone();
                 putText(
                     preview,
-                    "Checking camera " + to_string(candidateIndex) + " for a face | Q: quit",
+                    "Camera " + to_string(candidateIndex) + " | Enter: use | N: next | Q: quit",
                     Point(20, 30),
                     FONT_HERSHEY_SIMPLEX,
                     0.6,
@@ -330,6 +331,18 @@ int main()
                 imshow("Searching for webcam", preview);
 
                 char key = static_cast<char>(waitKey(1));
+                if (key == 13 || key == 10)
+                {
+                    cameraSelected = true;
+                    cameraIndex = candidateIndex;
+                    cout << "Selected camera index " << cameraIndex << ".\n";
+                    break;
+                }
+                if (key == 'n' || key == 'N')
+                {
+                    declinedCamera = true;
+                    break;
+                }
                 if (key == 'q' || key == 'Q' || key == 27)
                 {
                     quitRequested = true;
