@@ -1,6 +1,7 @@
 #include "window_motion.h"
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 
@@ -53,11 +54,18 @@ int main() {
         const auto limited=settle(extreme,feel,{-5,5});
         require(std::abs(limited[0])<=30*0.15&&std::abs(limited[1])<=30*0.10,
                 "Extreme tracking input must stay inside a modest camera motion range");
-        feel.smoothing=0.9;feel.roomDepth=10;feel.gridDensity=20;
+        feel.smoothing=0.9;feel.cameraIndex=3;
         saveWindowFeel(path,feel);
         const auto loaded=loadWindowFeel(path);
         near(loaded.smoothing,0.9,"Smoothing must survive save/load");
-        require(loaded.gridDensity==20,"Room settings must survive save/load");
+        require(loaded.cameraIndex==3,"Camera selection must survive save/load");
+        {
+            std::ofstream legacy(path);
+            legacy << "TESSERACT_WINDOW_FEEL 2\n1.4 0.8 8 0.45 12 4\n";
+        }
+        const auto legacyLoaded=loadWindowFeel(path);
+        near(legacyLoaded.sensitivity,1.4,"Legacy view settings must retain sensitivity");
+        require(legacyLoaded.cameraIndex==4,"Legacy camera selection must remain compatible");
         bool rejected=false;
         try {WindowFeel bad;bad.smoothing=1;validateWindowFeel(bad);}
         catch (const std::invalid_argument&) {rejected=true;}

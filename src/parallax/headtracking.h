@@ -4,11 +4,11 @@
 #include <memory>
 
 namespace tesseract {
-// Owns camera, YuNet detector, diagnostics window and worker. No raylib dependency.
+// Owns camera, YuNet detector and worker. No raylib dependency.
 class HeadTracking {
 public:
-    // -1 scans 0-9. An explicit index never silently selects another device.
-    HeadTracking(const std::filesystem::path& executableDirectory,int cameraIndex = -1);
+    // Opens only the selected camera index (0-9).
+    HeadTracking(const std::filesystem::path& executableDirectory,int cameraIndex);
     ~HeadTracking();
     HeadTracking(const HeadTracking&) = delete;
     HeadTracking& operator=(const HeadTracking&) = delete;

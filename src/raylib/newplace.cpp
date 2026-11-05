@@ -1,6 +1,7 @@
 #include <raylib.h>
 #include <raymath.h>
 #include <rlgl.h>
+#include "../scenes/project_scenes.h"
 
 using namespace std;
 
@@ -10,45 +11,6 @@ struct ViewerPose {
     Vector3 target;
     Vector3 up;
 };
-
-enum class ShapeType {
-    Cube,
-    Sphere,
-    Cylinder,
-    Cone,
-    Capsule
-};
-
-struct FloatingShape {
-    ShapeType type;
-    Vector3 position;
-    float size;
-    Color color;
-};
-
-void DrawFloatingShape(const FloatingShape& shape) {
-    switch (shape.type) {
-        case ShapeType::Cube:
-            DrawCube(shape.position, shape.size, shape.size, shape.size, shape.color);
-            break;
-        case ShapeType::Sphere:
-            DrawSphere(shape.position, shape.size * 0.5f, shape.color);
-            break;
-        case ShapeType::Cylinder:
-            DrawCylinder(shape.position, shape.size * 0.35f, shape.size * 0.35f,
-                         shape.size, 12, shape.color);
-            break;
-        case ShapeType::Cone:
-            DrawCylinder(shape.position, 0.0f, shape.size * 0.45f,
-                         shape.size, 12, shape.color);
-            break;
-        case ShapeType::Capsule:
-            DrawCapsule(Vector3{ shape.position.x, shape.position.y - shape.size * 0.3f, shape.position.z },
-                        Vector3{ shape.position.x, shape.position.y + shape.size * 0.3f, shape.position.z },
-                        shape.size * 0.28f, 8, 8, shape.color);
-            break;
-    }
-}
 
 void UpdateViewerPoseFromInput(ViewerPose& viewer, float screenWidth, float screenHeight, float screenPlaneZ) {
     const Vector2 mouse = GetMousePosition();
@@ -111,24 +73,6 @@ int main(){
     };
 
     // Positive z is closer to us, so a few shapes can poke through the window.
-    const FloatingShape shapes[] = {
-        { ShapeType::Cube,     Vector3{ -4.2f,  3.4f, -1.5f }, 1.0f, RED },
-        { ShapeType::Sphere,   Vector3{ -1.8f,  4.0f,  2.0f }, 1.2f, BLUE },
-        { ShapeType::Cylinder, Vector3{  2.1f,  3.5f, -4.0f }, 1.4f, GREEN },
-        { ShapeType::Cone,     Vector3{  4.6f,  2.3f,  3.3f }, 1.2f, ORANGE },
-        { ShapeType::Capsule,  Vector3{ -5.0f,  0.1f,  1.0f }, 1.3f, PURPLE },
-        { ShapeType::Sphere,   Vector3{ -2.6f,  0.4f,  6.4f }, 1.1f, GOLD },
-        { ShapeType::Cube,     Vector3{  0.2f,  1.6f, -6.0f }, 1.3f, SKYBLUE },
-        { ShapeType::Cylinder, Vector3{  3.4f,  0.2f,  0.0f }, 1.5f, PINK },
-        { ShapeType::Cone,     Vector3{  5.0f, -2.1f,  1.8f }, 1.4f, LIME },
-        { ShapeType::Capsule,  Vector3{  1.4f, -2.6f,  6.6f }, 1.2f, VIOLET },
-        { ShapeType::Cube,     Vector3{ -1.8f, -3.0f, -2.5f }, 1.1f, MAROON },
-        { ShapeType::Sphere,   Vector3{ -4.5f, -2.0f, -5.0f }, 1.3f, DARKBLUE },
-        { ShapeType::Cylinder, Vector3{  2.7f, -3.4f, -5.5f }, 1.3f, DARKGREEN },
-        { ShapeType::Cone,     Vector3{  0.2f,  4.1f,  6.8f }, 1.0f, BROWN },
-        { ShapeType::Capsule,  Vector3{  4.0f, -0.9f, -3.0f }, 1.4f, DARKPURPLE }
-    };
-
     SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
 
     /*
@@ -158,17 +102,7 @@ int main(){
                 ApplyOffAxisProjection(viewerPose, screenWidth, screenHeight,
                                        viewerPose.position.z - screenPlaneZ, nearPlane, 100.0f);
 
-                for (const FloatingShape& shape : shapes) DrawFloatingShape(shape);
-
-                const float left = -screenWidth * 0.5f;
-                const float right = screenWidth * 0.5f;
-                const float bottom = 1.0f - screenHeight * 0.5f;
-                const float top = 1.0f + screenHeight * 0.5f;
-                // Outline the virtual screen so it's easier to see where the window is.
-                DrawLine3D(Vector3{ left, bottom, screenPlaneZ }, Vector3{ right, bottom, screenPlaneZ }, DARKGRAY);
-                DrawLine3D(Vector3{ right, bottom, screenPlaneZ }, Vector3{ right, top, screenPlaneZ }, DARKGRAY);
-                DrawLine3D(Vector3{ right, top, screenPlaneZ }, Vector3{ left, top, screenPlaneZ }, DARKGRAY);
-                DrawLine3D(Vector3{ left, top, screenPlaneZ }, Vector3{ left, bottom, screenPlaneZ }, DARKGRAY);
+                tesseract::drawFloatingShapeScene(screenWidth,screenHeight,screenPlaneZ);
 
             EndMode3D();
 

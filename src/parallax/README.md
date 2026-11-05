@@ -1,4 +1,4 @@
-# Tesseract Depth Window
+# TesseractParallax
 
 The integrated app now has one presentation mode: smooth, bounded head-tracked
 Depth mode. Physical monitor calibration, metric eye-depth tracking and the P
@@ -15,9 +15,10 @@ deleted. The separate original `HeadTracking` application remains available.
 | `window_motion.cpp/.h` | Bounded head movement, fixed viewing distance, smoothing, recentering, saved settings |
 | `3Denvironment.cpp/.h` | Window lifecycle, input, projection, render loop |
 | `off_axis_projection.cpp/.h` | View/frustum matrices and aspect-correct virtual opening |
-| `test_scene.cpp/.h` | Gridded room, lit sculptures and optional solid comparison room |
+| `../scenes/project_scenes.cpp/.h` | Shared floating-shape and animated-square project scenes |
 | `window_controls.cpp/.h` | Live Depth settings and save/reset buttons |
 | `ui.cpp/.h` | Optional detailed diagnostics |
+| `start_menu.cpp/.h` | Startup screen, scene selection and menu actions |
 | `settings.h` | Default window, scene and detector constants |
 
 ## Build and run
@@ -26,13 +27,14 @@ From the repository root:
 
 ```powershell
 cmake --build build/raylib-test --config Release --target TesseractParallax -- /m:1 /nr:false
-.\build\raylib-test\bin\Release\TesseractParallax.exe 1
+.\build\raylib-test\bin\Release\TesseractParallax.exe
 ```
 
-Camera index 1 is the established working virtual camera. Omit the index to scan
-0-9; an explicit index never silently selects another device. Capture tries
-DirectShow, Media Foundation and automatic backend selection, preserving the
-native feed format. Start the virtual camera output before launching.
+The app starts full-screen without opening a camera or a separate preview window.
+Open **Settings**, choose a camera index from 0-9, and select **Start camera** to
+begin tracking. Only the selected index is opened; capture tries DirectShow,
+Media Foundation and automatic backend selection while preserving the camera's
+native feed format. Start the virtual camera output before selecting it.
 
 The integrated app needs only `custom/face_detection_yunet_2023mar.onnx`, copied
 beside the executable during the build. It does not load dlib, landmarks or a
@@ -54,7 +56,6 @@ The normal default project still includes the standalone legacy applications.
 
 ## How the effect works
 
-The approach is informed by [Depth Window](https://arcade.pirillo.com/depth-window.html).
 YuNet detects the face box. Its center is normalized to image coordinates and
 published as a thread-safe snapshot. Camera rotation, facial landmarks, gaze and
 estimated metric depth do not drive the scene.
@@ -68,26 +69,31 @@ of real head-to-screen geometry.
 
 The asymmetric frustum uses the eye position relative to the virtual opening.
 The screen-plane corners remain fixed at the viewport edges. The opening follows
-window aspect ratio, and the camera keeps a screen-aligned orientation. Five
-room grids provide perspective references, while three static, lit sculptures
-occupy distinct depths. The optional solid room retains the earlier visual test.
+window aspect ratio, and the camera keeps a screen-aligned orientation. Scene
+selection reuses the floating shapes from `src/raylib/newplace.cpp` or the
+animated square from `src/raylib/mainRaylib.cpp`.
 
 ## Controls
+
+The app opens full-screen to the Tesseract start screen. **Select Scene** offers
+the existing off-axis floating-shape scene and animated-square demo; **Settings**
+opens camera and tracking settings; **Exit Program** closes the app. The mouse
+stays visible until a scene is selected. Press Escape during gameplay to return
+to the start screen. The scene picker has a visible **Back to Main Menu** button,
+and settings has a visible **Back** button.
 
 | Key | Action |
 | --- | --- |
 | C or V | Open/close Depth settings |
 | R | Recenter using the latest face position |
-| M | Switch camera/mouse preview; `--mouse` always uses mouse input |
-| B | Compare dark grid and solid test rooms |
+| M | Switch between the selected camera and mouse preview; `--mouse` always uses mouse input |
 | H | Show/hide tracking diagnostics in the 3D window |
 | F11 | Borderless fullscreen |
-| Escape | Close settings first; otherwise exit |
+| Escape | Close settings, return to the start screen, or exit from the start screen |
 
-Settings include sensitivity, smoothing, room depth, grid opacity and grid density.
-Save settings persists them in `window_view.txt` beside the executable. Reset
-applies defaults immediately; save afterward to retain the reset. C now opens
-these useful Depth controls rather than the retired monitor-photo menu.
+Settings include camera selection, sensitivity and smoothing. Save settings
+persists them in `window_view.txt` beside the executable. Reset applies defaults
+immediately; save afterward to retain the reset.
 
 ## Ownership and tests
 

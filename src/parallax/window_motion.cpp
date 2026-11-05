@@ -8,25 +8,39 @@ namespace tesseract {
 void validateWindowFeel(const WindowFeel& s) {
     if (!std::isfinite(s.sensitivity)||s.sensitivity<0.2||s.sensitivity>3||
         !std::isfinite(s.smoothing)||s.smoothing<0.3||s.smoothing>0.95||
-        !std::isfinite(s.roomDepth)||s.roomDepth<2||s.roomDepth>12||
-        !std::isfinite(s.gridOpacity)||s.gridOpacity<0.1||s.gridOpacity>0.9||
-        s.gridDensity<4||s.gridDensity>24)
-        throw std::invalid_argument("Invalid window motion or room settings");
+        s.cameraIndex<0||s.cameraIndex>9)
+        throw std::invalid_argument("Invalid tracking settings");
 }
 void saveWindowFeel(const std::filesystem::path& path,const WindowFeel& s) {
     validateWindowFeel(s);
     std::ofstream out(path);
-    out << "TESSERACT_WINDOW_FEEL 1\n" << s.sensitivity << ' ' << s.smoothing << ' '
-        << s.roomDepth << ' ' << s.gridOpacity << ' ' << s.gridDensity << '\n';
+    out << "TESSERACT_WINDOW_FEEL 3\n" << s.sensitivity << ' ' << s.smoothing << ' '
+        << s.cameraIndex << '\n';
     out.flush();
     if (!out) throw std::runtime_error("Cannot save view settings beside the executable");
 }
 WindowFeel loadWindowFeel(const std::filesystem::path& path) {
     std::ifstream in(path);
     std::string magic;int version=0;WindowFeel s;
-    if (!(in>>magic>>version>>s.sensitivity>>s.smoothing>>s.roomDepth>>s.gridOpacity>>s.gridDensity)||
-        magic!="TESSERACT_WINDOW_FEEL"||version!=1)
+    if (!(in>>magic>>version)||magic!="TESSERACT_WINDOW_FEEL"||
+        (version!=1&&version!=2&&version!=3))
         throw std::runtime_error("Invalid window view settings file");
+    if (!(in>>s.sensitivity>>s.smoothing))
+        throw std::runtime_error("Invalid window view settings file");
+    if (version<3) {
+        double legacyRoomDepth=0,legacyGridOpacity=0;
+        int legacyGridDensity=0;
+        if (!(in>>legacyRoomDepth>>legacyGridOpacity>>legacyGridDensity))
+            throw std::runtime_error("Invalid window view settings file");
+        (void)legacyRoomDepth;
+        (void)legacyGridOpacity;
+        (void)legacyGridDensity;
+    }
+    if (version==2) {
+        if (!(in>>s.cameraIndex)) throw std::runtime_error("Invalid window view settings file");
+    } else if (version==3&&!(in>>s.cameraIndex)) {
+        throw std::runtime_error("Invalid window view settings file");
+    }
     validateWindowFeel(s);
     return s;
 }

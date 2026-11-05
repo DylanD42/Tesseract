@@ -18,7 +18,8 @@
       "configuration": "Release",
       "targets": [
         "HeadTracking",
-        "RaylibScene"
+        "RaylibScene",
+        "TesseractParallax"
       ],
       "jobs": 4
     },
@@ -29,7 +30,8 @@
       "configuration": "Debug",
       "targets": [
         "HeadTracking",
-        "RaylibScene"
+        "RaylibScene",
+        "TesseractParallax"
       ],
       "jobs": 4
     },

@@ -19,31 +19,46 @@ std::filesystem::path executableDirectory() {
         buffer.resize(buffer.size() * 2);
     }
 }
-int cameraIndex(int argc, char** argv) {
-    if (argc == 1) return -1;
-    if (argc != 2) throw std::invalid_argument("Usage: TesseractParallax.exe [camera-index | --mouse]");
-    const std::string value = argv[1];
-    std::size_t parsed = 0;
-    const int index = std::stoi(value, &parsed);
-    if (parsed != value.size() || index < 0)
-        throw std::invalid_argument("Camera index must be a nonnegative integer");
-    return index;
-}
 }
 
 int main(int argc, char** argv) {
     try {
+        if (argc>2||(argc==2&&std::string(argv[1])!="--mouse"))
+            throw std::invalid_argument("Usage: TesseractParallax.exe [--mouse]");
         const bool mouseOnly = argc==2 && std::string(argv[1])=="--mouse";
-        const int index = mouseOnly ? -1 : cameraIndex(argc, argv);
         const auto directory = executableDirectory();
         tesseract::Environment3D environment(directory,mouseOnly);
         std::unique_ptr<tesseract::HeadTracking> tracking;
-        if (!mouseOnly) {
-            tracking=std::make_unique<tesseract::HeadTracking>(directory,index);
-        }
-        while (!environment.shouldClose() && (!tracking || !tracking->stopRequested())) {
-            const auto snapshot=tracking?tracking->snapshot():tesseract::Snapshot{};
+
+        while (!environment.shouldClose()) {
+            tesseract::Snapshot snapshot;
+            if (tracking&&tracking->stopRequested()) {
+                snapshot=tracking->snapshot();
+                const std::string status=snapshot.status.empty()?"Tracking stopped":snapshot.status;
+                tracking.reset();
+                environment.setCameraStatus(false,status);
+            } else if (tracking) {
+                snapshot=tracking->snapshot();
+            }
+
             environment.drawFrame(snapshot);
+
+            const auto cameraRequest=environment.takeCameraRequest();
+            if (cameraRequest) {
+                if (*cameraRequest<0) {
+                    tracking.reset();
+                    environment.setCameraStatus(false,"Camera stopped; mouse preview is active.");
+                } else {
+                    try {
+                        tracking=std::make_unique<tesseract::HeadTracking>(directory,*cameraRequest);
+                        environment.setCameraStatus(true,"Camera "+std::to_string(*cameraRequest)+" connected.");
+                    } catch (const std::exception& error) {
+                        tracking.reset();
+                        std::cerr << error.what() << '\n';
+                        environment.setCameraStatus(false,error.what());
+                    }
+                }
+            }
         }
         // Destruction stops and joins tracking before closing the rendering window.
         return 0;

@@ -7,9 +7,7 @@ namespace tesseract {
 struct WindowFeel {
     double sensitivity = 1.5;
     double smoothing = 0.85; // Fraction retained per 60 Hz render frame.
-    double roomDepth = 8;    // Room depth / width = roomDepth / 3.
-    double gridOpacity = 0.45;
-    int gridDensity = 12;
+    int cameraIndex = 0;
 };
 void validateWindowFeel(const WindowFeel& settings);
 void saveWindowFeel(const std::filesystem::path& path,const WindowFeel& settings);

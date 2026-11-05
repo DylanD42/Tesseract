@@ -2,7 +2,6 @@
 #include "settings.h"
 #include <opencv2/core.hpp>
 #include <opencv2/videoio.hpp>
-#include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/objdetect.hpp>
 #include <algorithm>
@@ -34,8 +33,7 @@ bool openCamera(int index,cv::VideoCapture& camera,cv::Mat& frame) {
     camera.release();
     return false;
 }
-void detectFace(const cv::Mat& frame,cv::Mat& debug,cv::Ptr<cv::FaceDetectorYN>& detector,
-                Snapshot& snapshot) {
+void detectFace(const cv::Mat& frame,cv::Ptr<cv::FaceDetectorYN>& detector,Snapshot& snapshot) {
     snapshot.faceCenterValid=false;
     const double scale=std::min(1.0,static_cast<double>(kDetectWidth)/frame.cols);
     cv::Mat small,detections;
@@ -56,36 +54,20 @@ void detectFace(const cv::Mat& frame,cv::Mat& debug,cv::Ptr<cv::FaceDetectorYN>&
     snapshot.faceScore=face[14];
     snapshot.status="Face-center tracking";
     ++snapshot.faceSampleId;
-    cv::rectangle(debug,cv::Rect(cvRound(x),cvRound(y),cvRound(w),cvRound(h)),cv::Scalar(0,220,160),2);
-    for (int i=0;i<5;++i)
-        cv::circle(debug,{cvRound(face[4+2*i]/scale),cvRound(face[5+2*i]/scale)},3,cv::Scalar(0,230,255),cv::FILLED);
 }
 void trackingWorker(cv::VideoCapture& capture,cv::Ptr<cv::FaceDetectorYN>& detector,Shared& shared) {
-    const char* title="Tesseract - Face Tracking";
-    cv::namedWindow(title,cv::WINDOW_NORMAL);
-    cv::resizeWindow(title,760,570);
     Snapshot snapshot;
     cv::Mat frame;
     while (!shared.quit) {
         if (capture.read(frame)&&!frame.empty()) {
-            auto debug=frame.clone();
-            detectFace(frame,debug,detector,snapshot);
-            cv::flip(debug,debug,1); // Preview only. Detection uses the unmirrored frame.
-            cv::putText(debug,snapshot.status,cv::Point(12,24),cv::FONT_HERSHEY_SIMPLEX,0.6,
-                        snapshot.faceCenterValid?cv::Scalar(0,220,160):cv::Scalar(0,140,255),2);
-            cv::putText(debug,cv::format("Faces: %d | score %.2f | Q/Esc: exit",snapshot.faceCount,snapshot.faceScore),
-                        cv::Point(12,50),cv::FONT_HERSHEY_SIMPLEX,0.52,cv::Scalar(255,255,255),2);
-            cv::imshow(title,debug);
+            detectFace(frame,detector,snapshot);
         } else {
             snapshot.faceCenterValid=false;
             snapshot.status="Camera read failed";
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         {std::lock_guard<std::mutex> lock(shared.mutex);shared.snapshot=snapshot;}
-        const int key=cv::waitKey(1);
-        if (key=='q'||key=='Q'||key==27) shared.quit=true;
     }
-    cv::destroyWindow(title);
 }
 }
 struct HeadTracking::Impl {
@@ -94,6 +76,7 @@ struct HeadTracking::Impl {
     Shared shared;
     std::thread worker;
     Impl(const std::filesystem::path& directory,int index) {
+        if (index<0||index>9) throw std::invalid_argument("Camera index must be between 0 and 9");
         namespace fs=std::filesystem;
         const char* filename="face_detection_yunet_2023mar.onnx";
         auto model=directory/"custom"/filename;
@@ -104,11 +87,7 @@ struct HeadTracking::Impl {
         if (detector.empty()) throw std::runtime_error("YuNet model failed to load");
         cv::Mat frame;
         bool opened=false;
-        if (index>=0) opened=openCamera(index,capture,frame);
-        else for (index=0;index<10;++index) {
-            std::cout << "Trying camera " << index << "...\n";
-            if (openCamera(index,capture,frame)) {opened=true;break;}
-        }
+        opened=openCamera(index,capture,frame);
         if (!opened) throw std::runtime_error("Could not open camera. Start virtual camera output or select another index.");
         std::cout << "Using camera " << index << " via " << capture.getBackendName()
                   << " (" << frame.cols << 'x' << frame.rows << ")\n";
@@ -119,7 +98,6 @@ struct HeadTracking::Impl {
                  shared.snapshot.faceCenterValid=false;shared.snapshot.status=error.what();}
                 std::cerr << "Tracking stopped: " << error.what() << '\n';
                 shared.quit=true;
-                try {cv::destroyAllWindows();} catch (const cv::Exception&) {}
             }
         });
     }

@@ -197,6 +197,7 @@ if(BUILD_RAYLIB_SCENE)
 
     add_executable(RaylibScene
         src/raylib/newplace.cpp
+        src/scenes/project_scenes.cpp
     )
 
     target_link_libraries(RaylibScene PRIVATE
@@ -235,16 +236,18 @@ if(BUILD_PARALLAX)
         src/parallax/window_controls.cpp
         src/parallax/3Denvironment.cpp
         src/parallax/ui.cpp
-        src/parallax/test_scene.cpp
+        src/parallax/start_menu.cpp
+        src/scenes/project_scenes.cpp
         src/parallax/off_axis_projection.cpp
         src/parallax/headtracking.h
         src/parallax/window_motion.h
         src/parallax/window_controls.h
         src/parallax/3Denvironment.h
         src/parallax/ui.h
+        src/parallax/start_menu.h
         src/parallax/settings.h
         src/parallax/tracking_types.h
-        src/parallax/test_scene.h
+        src/scenes/project_scenes.h
         src/parallax/off_axis_projection.h
     )
 

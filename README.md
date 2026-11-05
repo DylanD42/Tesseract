@@ -3,9 +3,12 @@ Adding a 3rd dimension to computer screens using head tracking and off point pro
 
 Repository for our senior design project! 
 
-to build and run the project:
+to build and run the integrated Tesseract app:
 cmake --preset windows-msvc
 cmake --build --preset release
+.\build\combined\bin\Release\TesseractParallax.exe
+
+The separate legacy applications can still be run independently:
 .\build\combined\bin\Release\HeadTracking.exe
 .\build\combined\bin\Release\RaylibScene.exe
 
@@ -24,18 +27,15 @@ The integrated app is organized into modules under `src/parallax`.
 See [the architecture guide](src/parallax/README.md) for module responsibilities,
 communication, build instructions, tests, and planned extension points.
 
-Start your virtual camera output before launching the app. Physical and virtual
-cameras are opened through DirectShow first, then Media Foundation and automatic
-backend selection. Allow a few seconds for the feed to start.
+The integrated app starts full-screen without opening a camera. Select a camera
+index under **Settings** and choose **Start camera** to begin tracking. The app
+opens only that device, trying DirectShow, Media Foundation and then automatic
+backend selection while preserving the camera's default resolution. Start your
+virtual camera output before selecting it.
 
 In HeadTracking's camera preview, press Enter to select any working feed, even
 before a face is detected. Press N to try the next camera. A visible face is still
 needed for pose tracking and calibration.
-
-The integrated app tries indexes 0-9 automatically until a feed opens. To select
-a specific device, pass the camera index, for example:
-`.\build\combined\bin\Release\TesseractParallax.exe 1`.
-It preserves the camera's default resolution for virtual camera compatibility.
 
 ## Standalone HeadTracking pose setup
 
@@ -59,23 +59,28 @@ millimeters based on a generic 3D face template, so camera FOV, individual facia
 proportions, and head pose affect accuracy. A depth camera or calibrated intrinsics
 would provide more reliable measurements.
 
-## Depth Window app
+## TesseractParallax scenes
 
-The integrated app now has one smooth Depth mode: fixed viewing distance, bounded
-face-position movement and a dark grid room with three lit sculptures. Physical
-mode and its photo-calibration menu have been removed; old saved monitor profiles
-are left on disk but no longer affect rendering. The integrated app no longer
-runs dlib landmarks, solvePnP or metric eye-depth estimation.
+The integrated app uses fixed viewing distance and bounded face-position
+movement. Its scene picker uses the two existing raylib scenes: the off-axis
+floating-shape scene and the animated square demo. The temporary grid-room and
+solid test-room scenes have been removed. Physical monitor calibration, metric
+eye-depth tracking and dlib landmarks are not used by the integrated app.
 
-**C/V** opens Depth settings, **R** recenters, **M** switches mouse preview, **B**
-compares rooms, **H** shows diagnostics, and **F11** toggles fullscreen. Settings
-for sensitivity, smoothing and room appearance can be saved beside the executable.
+On launch, Tesseract opens a start screen with **Select Scene**, **Settings**,
+and **Exit Program**. The mouse stays visible until a scene is selected. Scene
+selection offers the existing floating-shape and animated-square scenes; press
+Escape during gameplay to return to the start screen.
+
+**C/V** opens settings, **R** recenters, **M** switches camera/mouse input, **H**
+shows diagnostics, and **F11** toggles fullscreen. Camera selection, sensitivity
+and smoothing can be saved beside the executable.
 
 ```powershell
 cmake --build build/raylib-test --config Release --target TesseractParallax -- /m:1 /nr:false
-.\build\raylib-test\bin\Release\TesseractParallax.exe 1
+.\build\raylib-test\bin\Release\TesseractParallax.exe
 ```
 
-Use `--mouse` instead of `1` for camera-free testing. See
+Use `--mouse` for a camera-free session. See
 [the architecture guide](src/parallax/README.md) and
 [the session change summary](CHANGES.md) for details.
