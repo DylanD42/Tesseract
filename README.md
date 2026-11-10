@@ -1,40 +1,110 @@
 # Tesseract
-Adding a 3rd dimension to computer screens using head tracking and off point projection!
 
-Repository for our senior design project! 
+Adding a 3rd dimension to computer screens using head tracking and off-axis projection.
+Senior design project.
 
-to build and run the project:
+A webcam tracks your eyes (YuNet face box -> dlib 68 landmarks -> solvePnP), and raylib draws a 3D scene
+through an asymmetric frustum so the monitor behaves like a window into the scene.
+
+## Build and run
+
+Requirements: Visual Studio 2026 (C++ desktop workload), CMake 3.20+, git. Network access on the first
+configure (dlib is fetched; raylib and OpenCV are git submodules).
+
+```
+git submodule update --init --recursive
 cmake --preset windows-msvc
 cmake --build --preset release
-.\build\combined\bin\Release\HeadTracking.exe
-.\build\combined\bin\Release\RaylibScene.exe
+.\build\bin\Release\Tesseract.exe        # optional argument: camera index (default 0)
+```
+
+For a clean build run
+
+```
+Remove-Item -Recurse -Force .\build
+```
 
 
-to build only one program 
-cmake --build --preset headtracking
-cmake --build --preset raylib
+The first build compiles OpenCV, dlib and raylib from source and takes a while. After that only the
+Tesseract sources rebuild. `cmake --build --preset debug` builds the Debug configuration.
 
+The face models live in `custom/` and are copied next to the executable, so it runs from any working
+directory. If you run from the IDE without that copy, the source `custom/` folder is used.
 
-to clean the workplace for a clean build
-cmake --build --preset release --target clean
+## Using it
 
-## Face pose setup
+Sit still for a second after start so the tracker can center on you. Keys on the scene screen:
 
-The tracker uses dlib's 68-point facial landmark predictor and OpenCV `solvePnP`.
-On the first run, download dlib's `shape_predictor_68_face_landmarks.dat.bz2`,
-decompress it, and place `shape_predictor_68_face_landmarks.dat` in the repository's
-`custom` directory. CMake fetches dlib during the first configure, so that configure
-requires network access.
+| Key          | Action                                                      |
+|--------------|-------------------------------------------------------------|
+| `1`-`5`, TAB | Switch scene                                                |
+| `[` `]`      | Parallax strength (1.00 = physically exact)                 |
+| `P`          | True geometry (needs the screen photo) / recentered on you  |
+| `R`          | Recenter                                                    |
+| `L`          | Latency prediction on/off                                   |
+| `H`          | HUD on/off                                                  |
+| `C`          | Setup menu: screen photo, webcam field of view              |
+| `V`          | Pen-tip test (checks the setup)                             |
+| `F11`        | Borderless fullscreen                                       |
+| `ESC`        | Quit                                                        |
 
-The app does not require checkerboard calibration. It estimates camera intrinsics from
-the selected frame size and assumes a 70-degree horizontal field of view with zero lens
-distortion. This lets it start immediately, but the actual webcam field of view may
-differ, so estimated distances are approximate.
+Setup results are saved to `tesseract_calibration.yml` in the working directory. Without the setup, the
+screen size comes from the monitor (EDID) and the webcam is assumed to be centered just above the screen
+with a 70 degree horizontal field of view.
 
-After startup, hold still while the app averages 30 face-pose frames to set the
-starting position. `FacePositionState` stores `initialPosition`, `currentPosition`, and
-`relativePosition` as XYZ vectors. The display reports movement relative to the starting
-position and current estimated Z. Press R to set a new starting position. Values are in
-millimeters based on a generic 3D face template, so camera FOV, individual facial
-proportions, and head pose affect accuracy. A depth camera or calibrated intrinsics
-would provide more reliable measurements.
+A second window shows the webcam with the detected landmarks for diagnostics.
+
+## Code layout
+
+```
+src/
+  main.cpp               wiring only: load settings, start the tracker, run the frame loop
+  core/
+    config.h/.cpp        constants + Config (what is saved to tesseract_calibration.yml)
+    app_state.h/.cpp     AppState: everything the UI can change, and how changes reach the tracker/renderer
+    assets.h/.cpp        finds the model files in custom/
+    text.h/.cpp          Fmt(): printf-style std::string formatting
+  tracking/
+    head_tracker.h/.cpp  HeadTracker: webcam + YuNet + dlib + solvePnP + filtering on its own threads
+  render/
+    viewer.h/.cpp        physical screen -> world units, eye smoothing, off-axis projection, fullscreen
+    scene_shader.*       lighting/fog shader
+    scene_textures.*     procedural textures
+    scene_helpers.*      drawing helpers shared by the scenes
+    scenes.h/.cpp        the scene list (SceneDef table) and the per-frame 3D render
+  ui/
+    ui_layer.h           UiLayer interface: update() + draw(); UiFrame with per-frame read-only info
+    ui_widgets.*         NumberField, DrawPanel, DrawLinesAt
+    hotkeys.*            keyboard shortcuts
+    hud.*                the status overlay and the toast
+    setup_ui.*           setup menu, screen photo, FOV entry, pen-tip test
+```
+
+### Adding UI (scene selector, settings tab, ...)
+
+1. Create `src/ui/my_panel.h/.cpp` with a class that derives from `UiLayer` (see `ui/ui_layer.h`;
+   `ui/hud.cpp` is the smallest example, `ui/setup_ui.cpp` a complete one).
+2. In `update()`, read input and change `AppState`. Use its actions (`selectScene`, `setStrength`,
+   `setFov`, `togglePhysicalAlignment`, `requestSave`) or set its fields (`showHud`, `prediction`,
+   `fullscreen`, `recenter`...). Return `true` when your panel used the mouse/keyboard so the hotkeys
+   do not fire as well.
+3. In `draw()`, draw with normal raylib 2D calls. Window size is `frame.geo.sw` x `frame.geo.sh`.
+   Scene names come from `Scenes()[i].name` / `SceneCount()` in `render/scenes.h`.
+4. Add the .cpp to `CMakeLists.txt` and the layer to the `layers` vector in `main.cpp`
+   (last in the list = drawn on top, gets input first).
+
+Saving, pushing new webcam parameters to the tracker and toggling fullscreen all happen in `main.cpp`
+from the flags in `AppState`; UI code never calls the tracker or the renderer.
+
+### Adding a scene
+
+Write `void SceneMyThing(const SceneCtx&)` in `render/scenes.cpp` and add a row to the `kScenes` table.
+The scene is drawn inside the off-axis projection with the lighting shader bound; `SceneCtx` gives the
+opening rectangle in world units, the light direction, the textures, the time and `unitsPerMm`.
+
+## Tracking notes
+
+The tracker estimates camera intrinsics from the frame size and the webcam field of view (default 70
+degrees horizontal, zero lens distortion). The real webcam FOV may differ, so enter it in the setup
+menu, or fine-tune it with the pen-tip test. Positions are in millimetres based on a generic 3D face
+template, so facial proportions and head pose affect accuracy.

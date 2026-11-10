@@ -1,4 +1,24 @@
 {
   "cmake.useCMakePresets": "always",
-  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.cppStandard": "c++17",
+  "C_Cpp.default.cStandard": "c11",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/src",
+    "${workspaceFolder}/external/raylib/src",
+    "${workspaceFolder}/external/opencv/include",
+    "${workspaceFolder}/external/opencv/modules/core/include",
+    "${workspaceFolder}/external/opencv/modules/imgproc/include",
+    "${workspaceFolder}/external/opencv/modules/imgcodecs/include",
+    "${workspaceFolder}/external/opencv/modules/highgui/include",
+    "${workspaceFolder}/external/opencv/modules/videoio/include",
+    "${workspaceFolder}/external/opencv/modules/calib3d/include",
+    "${workspaceFolder}/external/opencv/modules/objdetect/include",
+    "${workspaceFolder}/external/opencv/modules/dnn/include",
+    "${workspaceFolder}/external/opencv/modules/features2d/include",
+    "${workspaceFolder}/external/opencv/modules/flann/include",
+    "${workspaceFolder}/build/opencv_build",
+    "${workspaceFolder}/build",
+    "${workspaceFolder}/build/_deps/dlib-src"
+  ]
 }

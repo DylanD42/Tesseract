@@ -31,3 +31,5 @@ Makefile
 *.log
 *.tmp
 *.bak
+# Per-machine calibration written by the app
+tesseract_calibration.yml
