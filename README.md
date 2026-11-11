@@ -54,12 +54,21 @@ with a 70 degree horizontal field of view.
 
 A second window shows the webcam with the detected landmarks for diagnostics.
 
+### Scene selector
+
+Scene names are listed on the left. Click one to preview it behind the menu: in the preview the **mouse** stands
+in for your head (move it to look around). **Open scene** (or double-click the name) enters the scene, and head
+tracking takes over. Before anything is picked, the default background shows. The panel on the right shows the
+scene's description. Imported scenes also have **Scene settings**: allow rotation, studio backdrop, auto-play
+animations, edit description, and delete (click twice). These are saved per scene in `models/library.yml`.
+
 ### Importing your own 3D models
 
-In **Select Scene**, click **Import 3D model...** or drag a file onto the window. Supported: `.glb`, `.gltf`,
+In **Select Scene**, click **+ Load a scene...** or drag a file onto the window. Supported: `.glb`, `.gltf`,
 `.obj`, `.iqm`, `.vox`, `.m3d`. The file (plus any `.bin`, texture or `.mtl` files it references) is copied into
 `models/` next to `tesseract_calibration.yml` and listed in `models/library.yml`, so it stays in the scene list
-after a restart. Click **Delete** twice on an imported scene to remove it.
+after a restart. The title is the file name. After the import, the scene selector previews it and asks for an
+optional description.
 
 From Blender: **File > Export > glTF 2.0 (.glb)** and tick **Include > Cameras**. Raw `.blend` files can't be read.
 
@@ -67,16 +76,16 @@ From Blender: **File > Export > glTF 2.0 (.glb)** and tick **Include > Cameras**
   (1 Blender metre = 1 real metre). An object 40 cm in front of the Blender camera floats 40 cm in front of your
   eyes, so it pops out of the screen if you sit further away than that. Use the camera's position and rotation
   to stage the scene. Its focal length is ignored, because the physical screen sets the field of view.
-- **Without a camera**, the model is scaled to fit the window and set just behind the glass.
-- **Spin**: click and drag on the scene to turn the model (left/right) and tilt it toward you (up/down).
+- **Without a camera**, the model is scaled to fit the window and set just behind the glass. You see it from
+  Blender's Front view (Numpad 1: looking from -Y toward +Y).
+- **Spin** (if allowed in the scene settings): click and drag on the scene to turn the model (left/right) and tilt it toward you (up/down).
   A flick keeps it spinning for a moment. Double-click resets it. The whole file turns about its center.
 - **Animations** play with a Play/Pause button, clip arrows and a timeline slider along the bottom while the
   mouse moves. Space toggles play. Each Blender action is one clip. Supported: object keyframes (location,
   rotation, scale; Linear, Constant and Bezier, with parenting), armature animations, and objects parented to
   bones. Not supported: shape keys and camera animation. Raylib plays the bone animations; the object keyframes
   are read from the glTF by `render/model_library.cpp`, because raylib's loader ignores them.
-- **Without a camera**, you see the model from Blender's Front view (Numpad 1: looking from -Y toward +Y).
-- **Settings > Imported models**: auto-play animations, and the studio backdrop. Files with a camera get a
+- **Studio backdrop** (scene settings): files with a camera get a
   checkered floor in the Blender world under the lowest object, lit from above. Files without one get a grid box
   room around the window. Turn the backdrop off when your Blender scene has its own environment.
 

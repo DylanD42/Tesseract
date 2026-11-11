@@ -392,11 +392,20 @@ void SceneShapes(const SceneCtx& c) {
 
 // ---------------------------------------------------------------- list ------
 const SceneDef kScenes[] = {
-    {"Window onto a garden", Color{150, 198, 240, 255}, {0.80f, 0.87f, 0.93f}, 60.0f, 3200.0f, 0.92f, {-0.45f, -1.0f, -0.55f}, SceneWindow},
-    {"Targets", Color{8, 8, 12, 255}, {0.0f, 0.0f, 0.0f}, 4.0f, 70.0f, 0.65f, {0.3f, -1.0f, -0.5f}, SceneTargets},
-    {"Furnished room", Color{30, 24, 20, 255}, {0.24f, 0.18f, 0.14f}, 25.0f, 320.0f, 0.35f, {-0.35f, -1.0f, -0.45f}, SceneRoom},
-    {"Space porthole", Color{2, 2, 8, 255}, {0.0f, 0.0f, 0.0f}, 1e5f, 2e5f, 0.0f, {-1.0f, -0.25f, -0.35f}, SceneSpace},
-    {"Floating shapes", Color{30, 30, 36, 255}, {0.55f, 0.57f, 0.63f}, 0.0f, 32.0f, 0.55f, {0.35f, -1.0f, -0.45f}, SceneShapes},
+    {"Window onto a garden", Color{150, 198, 240, 255}, {0.80f, 0.87f, 0.93f}, 60.0f, 3200.0f, 0.92f, {-0.45f, -1.0f, -0.55f}, SceneWindow,
+     "A real window with a deep frame, looking out onto a garden. The flower box right outside moves against the "
+     "trees and hills far away: the biggest depth difference of all the scenes."},
+    {"Targets", Color{8, 8, 12, 255}, {0.0f, 0.0f, 0.0f}, 4.0f, 70.0f, 0.65f, {0.3f, -1.0f, -0.5f}, SceneTargets,
+     "A tribute to Johnny Lee's Wii head-tracking demo: a deep gridded box with targets on sticks. A few targets "
+     "float in front of the screen."},
+    {"Furnished room", Color{30, 24, 20, 255}, {0.24f, 0.18f, 0.14f}, 25.0f, 320.0f, 0.35f, {-0.35f, -1.0f, -0.45f}, SceneRoom,
+     "A furnished room seen through a doorway. Familiar objects (table, chairs, shelves, lamp) help your eyes "
+     "judge distance; lean to see around the edges of the opening."},
+    {"Space porthole", Color{2, 2, 8, 255}, {0.0f, 0.0f, 0.0f}, 1e5f, 2e5f, 0.0f, {-1.0f, -0.25f, -0.35f}, SceneSpace,
+     "A porthole onto an asteroid field: asteroids just behind the glass, a station and moon in the middle "
+     "distance, a ringed planet and stars far away. Everything slowly rotates."},
+    {"Floating shapes", Color{30, 30, 36, 255}, {0.55f, 0.57f, 0.63f}, 0.0f, 32.0f, 0.55f, {0.35f, -1.0f, -0.45f}, SceneShapes,
+     "Shapes hanging on strings in a gridded room, with soft shadows on the floor."},
 };
 constexpr int kSceneCount = int(sizeof(kScenes) / sizeof(kScenes[0]));
 
@@ -405,7 +414,7 @@ const SceneDef& kPenTipSceneDef = kScenes[4];
 
 // Imported models: a neutral studio, no fog (RenderScene adjusts fog and light for files with a camera).
 const SceneDef kImportedSceneDef = {"", Color{24, 26, 32, 255}, {0.09f, 0.10f, 0.13f}, 1e5f, 2e5f, 0.0f,
-                                    {-0.35f, -1.0f, -0.45f}, nullptr};
+                                    {-0.35f, -1.0f, -0.45f}, nullptr, ""};
 
 // Light for files with a camera, in the file's world (Y up): from above, like Blender's sun from the top.
 constexpr Vector3 kFileWorldLight{-0.35f, -1.0f, -0.45f};
@@ -503,7 +512,8 @@ void SceneImported(const SceneCtx& c, int libraryIndex, const RenderInputs& in) 
     }
     const Matrix spin = lm && in.playback ? lm->spinTransform(in.playback->yaw, in.playback->pitch) : MatrixIdentity();
 
-    if (in.modelBackdrop && lm && lm->hasCamera) {
+    const bool backdrop = ImportedModelInfo(libraryIndex).backdrop;
+    if (backdrop && lm && lm->hasCamera) {
         // A checkered floor in the file's world, under the model, so it lines up with the scene as staged in
         // Blender (a box room around the screen would be tilted against it whenever the camera looks down).
         const FileFloor f = FloorFor(*lm);
@@ -539,7 +549,7 @@ void SceneImported(const SceneCtx& c, int libraryIndex, const RenderInputs& in) 
             }
         }
         EndShadows();
-    } else if (in.modelBackdrop) {
+    } else if (backdrop) {
         // A box room that contains the opening and the whole model: its walls and grid give the depth cues.
         const float pad = 0.1f * H;
         const float L = std::min(c.L, wb.min.x - pad), R = std::max(c.R, wb.max.x + pad);
@@ -623,6 +633,11 @@ std::string SceneName(int index) {
     return ImportedModelName(ImportedIndex(index));
 }
 
+std::string SceneDescription(int index) {
+    if (index >= 0 && index < kSceneCount) return kScenes[index].description;
+    return ImportedModelInfo(ImportedIndex(index)).description;
+}
+
 void RenderScene(int sceneIndex, const RenderInputs& in) {
     const int index = std::clamp(sceneIndex, 0, SceneCount() - 1);
     if (IsImportedScene(index)) {
@@ -632,7 +647,7 @@ void RenderScene(int sceneIndex, const RenderInputs& in) {
             // Light from above in the file's world, not relative to the screen.
             const Matrix view = MatrixInvert(lm->camera);
             sd.light = RotateDir(view, kFileWorldLight);
-            if (in.modelBackdrop) {
+            if (ImportedModelInfo(ImportedIndex(index)).backdrop) {
                 // Fog that fades the floor's far edge into the background but starts behind the whole model.
                 const BoundingBox& b = lm->bounds;
                 float modelFar = 0;

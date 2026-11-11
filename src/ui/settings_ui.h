@@ -3,7 +3,6 @@
 //   Camera       pick any webcam on the machine, start / switch / stop
 //   Webcam view  off, separate window, picture-in-picture
 //   Calibration  webcam field of view, webcam tilt, screen photo (corners + lens), pen-tip test
-//   Models       imported models: auto-play animations, studio backdrop
 // Everything saves to tesseract_calibration.yml as it changes.
 #pragma once
 #include "ui/ui_layer.h"

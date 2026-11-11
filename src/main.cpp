@@ -204,10 +204,14 @@ int main(int argc, char** argv) {
             std::string err, warning;
             const int index = ImportModel(path, err, warning);
             if (index < 0) { st.toast.show("Import failed: " + err, 9); continue; }
+            // Show it in the scene selector, previewed, with the (optional) description box open.
+            const int scene = BuiltInSceneCount() + index;
             st.settingsOpen = false;
-            st.enterScene(BuiltInSceneCount() + index);
+            st.page = Page::SceneSelect;
+            st.previewSceneAt(scene);
+            st.describeScene = scene;
             const LoadedModel* m = GetLoadedModel(index);
-            std::string msg = "Imported " + SceneName(st.cfg.scene);
+            std::string msg = "Imported " + SceneName(scene);
             msg += m && m->hasCamera ? " (using its camera)" : " (no camera in the file: fitted to the window)";
             if (m && m->clipCount() > 0) msg += ", " + std::to_string(m->clipCount()) + " animation(s)";
             if (!warning.empty()) msg += ". " + warning;
@@ -222,6 +226,8 @@ int main(int argc, char** argv) {
             if (IsImportedScene(scene) && RemoveImportedModel(ImportedIndex(scene), err)) {
                 if (st.cfg.scene == scene) st.cfg.scene = 0;
                 else if (st.cfg.scene > scene) --st.cfg.scene;
+                if (st.previewScene == scene) st.previewScene = -1;
+                else if (st.previewScene > scene) --st.previewScene;
                 st.requestSave();
                 st.toast.show("Deleted " + name, 4);
             } else if (!err.empty()) {
@@ -239,19 +245,23 @@ int main(int argc, char** argv) {
         // ---- eye position -> virtual camera ----
         // True geometry: eye relative to the center of the drawn area. Recentered: relative to where you sat
         // during the first second (R). Strength scales the sideways/vertical motion; the pen-tip test uses 1.0.
+        // The scene selector's preview uses the mouse instead (head tracking starts when the scene is entered).
         const bool penTip = st.page == Page::PenTipTest;
-        rig.update(snap, geo, penTip || st.physicalAlignment, penTip ? 1.0 : st.cfg.strength, st.cfg.prediction);
+        const int preview = st.page == Page::SceneSelect && !st.settingsOpen ? st.previewScene : -1;
+        if (preview >= 0) rig.updateFromMouse(geo, GetMousePosition());
+        else rig.update(snap, geo, penTip || st.physicalAlignment, penTip ? 1.0 : st.cfg.strength, st.cfg.prediction);
         frame.eyeMm = rig.eyeMm(geo);
         frame.predictS = rig.predictS;
-        if (st.page == Page::Scene && IsImportedScene(st.cfg.scene))
-            if (const LoadedModel* m = GetLoadedModel(ImportedIndex(st.cfg.scene)))
+        const int shownScene = st.page == Page::Scene ? st.cfg.scene : preview;
+        if (IsImportedScene(shownScene))
+            if (const LoadedModel* m = GetLoadedModel(ImportedIndex(shownScene)))
                 AdvancePlayback(st.playback, *m, GetFrameTime());
 
         // ---- draw: 3D scene (on the scene pages), then the UI layers on top ----
         BeginDrawing();
-        const RenderInputs in{rig, geo, shader, textures, &st.playback, st.cfg.modelBackdrop};
+        const RenderInputs in{rig, geo, shader, textures, &st.playback};
         if (penTip) RenderPenTipTest(st.penTipMm, in);
-        else if (st.page == Page::Scene) RenderScene(st.cfg.scene, in);
+        else if (shownScene >= 0) RenderScene(shownScene, in);
         else ClearBackground(theme::kPanel);   // menu and calibration pages paint the whole window themselves
         for (UiLayer* layer : layers) layer->draw(st, frame);
         DrawToast(st.toast, geo.sw, geo.sh);

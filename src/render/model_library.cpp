@@ -25,6 +25,7 @@ constexpr const char* kLibraryFile = "library.yml";
 struct Entry {
     std::string name;    // shown in the scene selector (UTF-8)
     std::string file;    // relative to the library folder, e.g. "chair/chair.glb"
+    ImportedSceneInfo info;
     std::unique_ptr<LoadedModel> gpu;
     bool failed = false;
     std::string error;
@@ -62,7 +63,11 @@ bool Save() {
     try {
         if (!store.open((g.dir / kLibraryFile).u8string(), cv::FileStorage::WRITE)) return false;
         store << "models" << "[";
-        for (const Entry& e : g.entries) store << "{" << "name" << e.name << "file" << e.file << "}";
+        for (const Entry& e : g.entries) {
+            store << "{" << "name" << e.name << "file" << e.file << "description" << e.info.description
+                  << "allow_rotation" << int(e.info.allowRotation) << "backdrop" << int(e.info.backdrop)
+                  << "autoplay" << int(e.info.autoplay) << "}";
+        }
         store << "]";
     } catch (const cv::Exception&) {
         return false;
@@ -503,6 +508,11 @@ void InitModelLibrary(const fs::path& dir) {
             e.file = std::string(n["file"]);
             if (e.file.empty()) continue;
             if (e.name.empty()) e.name = fs::u8path(e.file).stem().u8string();
+            e.info.description = std::string(n["description"]);
+            auto flag = [&](const char* key, bool& v) { const cv::FileNode f = n[key]; if (f.isInt()) v = int(f) != 0; };
+            flag("allow_rotation", e.info.allowRotation);
+            flag("backdrop", e.info.backdrop);
+            flag("autoplay", e.info.autoplay);
             g.entries.push_back(std::move(e));
         }
     } catch (const cv::Exception&) {
@@ -519,6 +529,17 @@ int ImportedModelCount() { return int(g.entries.size()); }
 const std::string& ImportedModelName(int i) {
     static const std::string none;
     return i >= 0 && i < ImportedModelCount() ? g.entries[i].name : none;
+}
+
+const ImportedSceneInfo& ImportedModelInfo(int i) {
+    static const ImportedSceneInfo none;
+    return i >= 0 && i < ImportedModelCount() ? g.entries[i].info : none;
+}
+
+bool SetImportedModelInfo(int i, const ImportedSceneInfo& info) {
+    if (i < 0 || i >= ImportedModelCount()) return false;
+    g.entries[i].info = info;
+    return Save();
 }
 
 const std::string& ImportedModelError(int i) {

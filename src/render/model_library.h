@@ -78,6 +78,16 @@ void ShutdownModelLibrary();
 int ImportedModelCount();
 const std::string& ImportedModelName(int i);
 
+// Per-scene options and text, saved in models/library.yml (edited in the scene selector's scene settings).
+struct ImportedSceneInfo {
+    std::string description;     // optional, typed by the user
+    bool allowRotation = true;   // click-and-drag spin in the scene
+    bool backdrop = true;        // studio floor / box room around the model
+    bool autoplay = true;        // start the animation when the scene opens
+};
+const ImportedSceneInfo& ImportedModelInfo(int i);
+bool SetImportedModelInfo(int i, const ImportedSceneInfo& info);   // saves library.yml; false if it could not
+
 // Copies the file (plus what it references) into the library and checks that it loads. Needs the window.
 // Returns the new model index, or -1 with `error` set. `warning` lists referenced files that were not found.
 int ImportModel(const std::string& sourcePathUtf8, std::string& error, std::string& warning);

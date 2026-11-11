@@ -22,6 +22,7 @@
 namespace tess {
 
 // Full-window pages. Settings is a modal panel that can sit on top of StartMenu or Scene.
+// SceneSelect can show a live preview of the chosen scene behind the menu (mouse parallax, no head tracking).
 enum class Page { StartMenu, SceneSelect, Scene, Calibration, PenTipTest };
 
 enum class WebcamView { Off = 0, Window = 1, PictureInPicture = 2 };
@@ -48,6 +49,7 @@ struct AppState {
     Page page = Page::StartMenu;
     bool settingsOpen = false;
     Page pageUnderSettings = Page::StartMenu;   // where Back from settings returns to
+    int  previewScene = -1;           // scene previewed behind the scene selector, -1 = default background
 
     // Camera status (written by main.cpp, read by the settings panel).
     std::vector<CameraInfo> cameras;
@@ -57,8 +59,10 @@ struct AppState {
 
     Toast toast;
 
-    // Animation of the imported model being shown (main.cpp advances it; the model controls change it).
+    // Animation and spin of the imported model being shown or previewed (main.cpp advances it; the model
+    // controls change it).
     ModelPlayback playback;
+    int describeScene = -1;           // ask for this scene's description in the scene selector (after an import)
 
     // Requests for main.cpp (cleared once applied).
     bool configDirty = false;
@@ -71,7 +75,9 @@ struct AppState {
     std::optional<int> removeScene;            // scene index of an imported scene to delete
 
     // ---- actions: use these rather than poking cfg so the save / tracker update happens ----
-    void enterScene(int index);               // from the scene picker: selects, saves, shows the scene
+    void openSceneSelect();                   // scene selector with the default background (nothing previewed)
+    void previewSceneAt(int index);           // show the scene behind the selector (mouse parallax)
+    void enterScene(int index);               // from the scene picker: selects, saves, shows the scene (head tracking)
     void importModel(const std::string& pathUtf8) { importRequests.push_back(pathUtf8); }
     void setStrength(double value);           // clamps to [0.1, 1.5]; saves
     void setFov(double deg, bool diagonal);   // clamps to [20, 160]; updates the tracker; saves

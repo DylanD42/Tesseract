@@ -34,6 +34,9 @@ struct ViewerRig {
     // absolute: eye relative to the window center (true geometry / pen-tip test); otherwise relative to the
     // recentered sitting position. strength scales sideways/vertical motion (1.0 = physically exact).
     void update(const Snapshot& snap, const ScreenGeometry& g, bool absolute, double strength, bool prediction);
+    // Scene-selector preview: the mouse stands in for the head. Mouse at the window center = straight on;
+    // at the edges the eye is about 20 cm to the side / 12 cm up or down, at the sitting distance.
+    void updateFromMouse(const ScreenGeometry& g, Vector2 mouse);
 
     float   screenDist() const;                       // eye to glass, world units
     Vector3 eyeMm(const ScreenGeometry& g) const;     // eye relative to the window center, mm

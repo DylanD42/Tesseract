@@ -2,7 +2,7 @@
 //
 // To add a scene: write a `void SceneMyThing(const SceneCtx&)` in scenes.cpp and add a row to kScenes.
 // The list is the built-in scenes followed by the imported models (render/model_library.h).
-// A scene selector only needs SceneName(i) and SceneCount().
+// A scene selector only needs SceneName(i), SceneDescription(i) and SceneCount().
 #pragma once
 #include "render/model_library.h"
 #include "render/scene_helpers.h"
@@ -20,11 +20,13 @@ struct SceneDef {
     float fogStart, fogEnd, fogMax;
     Vector3 light;            // direction the light travels
     void (*draw)(const SceneCtx&);
+    const char* description;  // shown in the scene selector
 };
 
 int SceneCount();                     // built-in + imported
 int BuiltInSceneCount();
 std::string SceneName(int index);
+std::string SceneDescription(int index);   // may be empty (imported scenes without one)
 bool IsImportedScene(int index);
 int ImportedIndex(int sceneIndex);    // position in the model library (-1 for a built-in scene)
 
@@ -34,8 +36,7 @@ struct RenderInputs {
     const ScreenGeometry& geo;
     const SceneShader& shader;
     const SceneTextures& textures;
-    const ModelPlayback* playback = nullptr;   // imported scenes: animation clip and frame
-    bool modelBackdrop = true;                 // imported scenes: studio box room around the model
+    const ModelPlayback* playback = nullptr;   // imported scenes: animation clip, frame and spin
 };
 
 // Draws one full frame of the given scene with the off-axis projection (ClearBackground included).

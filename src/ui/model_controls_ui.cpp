@@ -43,7 +43,12 @@ bool ModelControlsUi::update(AppState& st, const UiFrame& f) {
     ModelPlayback& p = st.playback;
     if (m->clipCount() > 0 && IsKeyPressed(KEY_SPACE)) p.playing = !p.playing;
 
-    // Click and drag spins the model; double-click puts it back.
+    // Click and drag spins the model; double-click puts it back. Scene settings can turn this off.
+    if (!ImportedModelInfo(ImportedIndex(st.cfg.scene)).allowRotation) {
+        dragging_ = false;
+        p.yaw = p.pitch = p.yawVelocity = 0;
+        return false;
+    }
     const float dt = GetFrameTime();
     const Vector2 mouse = GetMousePosition();
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !OverSettingsButton(mouse, f) &&
@@ -87,7 +92,8 @@ void ModelControlsUi::draw(AppState& st, const UiFrame& f) {
         return;
     }
     if (f.mouseIdleS > 2.5) return;
-    const char* hint = "Drag to spin the model, double-click to reset";
+    const char* hint = ImportedModelInfo(ImportedIndex(st.cfg.scene)).allowRotation
+                           ? "Drag to spin the model, double-click to reset" : "";
     if (!BarVisible(*m, f)) {
         DrawCenteredText(hint, 15, sh - 70, Fade(theme::kInk, 0.8f));
         return;

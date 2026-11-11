@@ -11,13 +11,34 @@ namespace tess {
 void Toast::show(const std::string& msg, double seconds) { text = msg; until = GetTime() + seconds; }
 bool Toast::visible() const { return !text.empty() && GetTime() < until; }
 
+namespace {
+ModelPlayback FreshPlayback(int scene) {
+    ModelPlayback p;
+    p.playing = !IsImportedScene(scene) || ImportedModelInfo(ImportedIndex(scene)).autoplay;
+    return p;
+}
+} // namespace
+
+void AppState::openSceneSelect() {
+    page = Page::SceneSelect;
+    previewScene = -1;
+}
+
+void AppState::previewSceneAt(int index) {
+    if (index < 0 || index >= SceneCount()) { previewScene = -1; return; }
+    if (index != previewScene) playback = FreshPlayback(index);
+    previewScene = index;
+}
+
 void AppState::enterScene(int index) {
-    cfg.scene = std::clamp(index, 0, SceneCount() - 1);
+    index = std::clamp(index, 0, SceneCount() - 1);
+    // Coming from its preview, the animation carries on where it was; the spin always starts from the staging.
+    if (index == previewScene) { playback.yaw = playback.pitch = playback.yawVelocity = 0; }
+    else playback = FreshPlayback(index);
+    cfg.scene = index;
     configDirty = true;
     page = Page::Scene;
     settingsOpen = false;
-    playback = ModelPlayback{};
-    playback.playing = cfg.modelAutoplay;
     toast.show(SceneName(cfg.scene) + "   (ESC = menu, R = recenter)", 6);
 }
 

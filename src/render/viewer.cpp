@@ -68,6 +68,17 @@ void ViewerRig::update(const Snapshot& snap, const ScreenGeometry& g, bool absol
     eyeWorld = Vector3Add(eyeWorld, Vector3Scale(Vector3Subtract(targetPos, eyeWorld), k));
 }
 
+void ViewerRig::updateFromMouse(const ScreenGeometry& g, Vector2 mouse) {
+    predictS = 0.0;
+    const float nx = std::clamp(mouse.x / float(std::max(1, g.sw)) * 2.0f - 1.0f, -1.0f, 1.0f);
+    const float ny = std::clamp(mouse.y / float(std::max(1, g.sh)) * 2.0f - 1.0f, -1.0f, 1.0f);
+    constexpr float kSideMm = 200.0f, kUpDownMm = 120.0f;
+    targetPos = {nx * kSideMm * g.unitsPerMm, kScreenCenterY - ny * kUpDownMm * g.unitsPerMm,
+                 kScreenPlaneZ + neutralDistMm * g.unitsPerMm};
+    const float k = 1.0f - std::exp(-GetFrameTime() * 12.0f);   // a little smoothing so it glides
+    eyeWorld = Vector3Add(eyeWorld, Vector3Scale(Vector3Subtract(targetPos, eyeWorld), k));
+}
+
 float ViewerRig::screenDist() const { return std::max(0.5f, eyeWorld.z - kScreenPlaneZ); }
 
 Vector3 ViewerRig::eyeMm(const ScreenGeometry& g) const {
