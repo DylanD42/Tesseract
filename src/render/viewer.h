@@ -28,6 +28,7 @@ struct ViewerRig {
     Vector3 eyeWorld{};
     Vector3 targetPos{};
     double  predictS = 0;      // seconds of latency prediction applied this frame (for the HUD)
+    float   neutralDistMm = 600;   // sitting distance from the screen (recenter reference); imported cameras sit here
 
     void init(const ScreenDims& dims);
     // absolute: eye relative to the window center (true geometry / pen-tip test); otherwise relative to the

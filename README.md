@@ -54,6 +54,32 @@ with a 70 degree horizontal field of view.
 
 A second window shows the webcam with the detected landmarks for diagnostics.
 
+### Importing your own 3D models
+
+In **Select Scene**, click **Import 3D model...** or drag a file onto the window. Supported: `.glb`, `.gltf`,
+`.obj`, `.iqm`, `.vox`, `.m3d`. The file (plus any `.bin`, texture or `.mtl` files it references) is copied into
+`models/` next to `tesseract_calibration.yml` and listed in `models/library.yml`, so it stays in the scene list
+after a restart. Click **Delete** twice on an imported scene to remove it.
+
+From Blender: **File > Export > glTF 2.0 (.glb)** and tick **Include > Cameras**. Raw `.blend` files can't be read.
+
+- **With a camera in the file**, the Blender camera becomes your eye at your sitting position, at real scale
+  (1 Blender metre = 1 real metre). An object 40 cm in front of the Blender camera floats 40 cm in front of your
+  eyes, so it pops out of the screen if you sit further away than that. Use the camera's position and rotation
+  to stage the scene. Its focal length is ignored, because the physical screen sets the field of view.
+- **Without a camera**, the model is scaled to fit the window and set just behind the glass.
+- **Spin**: click and drag on the scene to turn the model (left/right) and tilt it toward you (up/down).
+  A flick keeps it spinning for a moment. Double-click resets it. The whole file turns about its center.
+- **Animations** play with a Play/Pause button, clip arrows and a timeline slider along the bottom while the
+  mouse moves. Space toggles play. Each Blender action is one clip. Supported: object keyframes (location,
+  rotation, scale; Linear, Constant and Bezier, with parenting), armature animations, and objects parented to
+  bones. Not supported: shape keys and camera animation. Raylib plays the bone animations; the object keyframes
+  are read from the glTF by `render/model_library.cpp`, because raylib's loader ignores them.
+- **Without a camera**, you see the model from Blender's Front view (Numpad 1: looking from -Y toward +Y).
+- **Settings > Imported models**: auto-play animations, and the studio backdrop. Files with a camera get a
+  checkered floor in the Blender world under the lowest object, lit from above. Files without one get a grid box
+  room around the window. Turn the backdrop off when your Blender scene has its own environment.
+
 ## Code layout
 
 ```
@@ -71,7 +97,8 @@ src/
     scene_shader.*       lighting/fog shader
     scene_textures.*     procedural textures
     scene_helpers.*      drawing helpers shared by the scenes
-    scenes.h/.cpp        the scene list (SceneDef table) and the per-frame 3D render
+    scenes.h/.cpp        the scene list (SceneDef table + imported models) and the per-frame 3D render
+    model_library.*      imported models: copy into models/, library.yml, GPU loading, glTF camera, animation
   ui/
     ui_layer.h           UiLayer interface: update() + draw(); UiFrame with per-frame read-only info
     ui_widgets.*         NumberField, DrawPanel, DrawLinesAt
@@ -89,7 +116,7 @@ src/
    `fullscreen`, `recenter`...). Return `true` when your panel used the mouse/keyboard so the hotkeys
    do not fire as well.
 3. In `draw()`, draw with normal raylib 2D calls. Window size is `frame.geo.sw` x `frame.geo.sh`.
-   Scene names come from `Scenes()[i].name` / `SceneCount()` in `render/scenes.h`.
+   Scene names come from `SceneName(i)` / `SceneCount()` in `render/scenes.h`.
 4. Add the .cpp to `CMakeLists.txt` and the layer to the `layers` vector in `main.cpp`
    (last in the list = drawn on top, gets input first).
 

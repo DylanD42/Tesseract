@@ -15,7 +15,7 @@ void Hud::draw(AppState& st, const UiFrame& f) {
 
     DrawRectangle(0, 0, std::min(g.sw, 900), 150, Fade(BLACK, 0.5f));
     DrawFPS(10, 8);
-    DrawText(Fmt("Scene %d/%d: %s   (1-%d / TAB)", st.cfg.scene + 1, n, Scenes()[st.cfg.scene].name, n).c_str(),
+    DrawText(Fmt("Scene %d/%d: %s   (1-%d / TAB)", st.cfg.scene + 1, n, SceneName(st.cfg.scene).c_str(), n).c_str(),
              110, 10, 18, RAYWHITE);
     DrawText("[ ] strength | P geometry | R recenter | L prediction | C setup | V pen-tip test | H hud | F11 | ESC",
              10, 34, 16, RAYWHITE);

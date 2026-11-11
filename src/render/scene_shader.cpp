@@ -1,5 +1,6 @@
 #include "render/scene_shader.h"
 
+#include <raymath.h>
 #include <rlgl.h>
 #include <iostream>
 
@@ -11,11 +12,12 @@ in vec3 vertexPosition;
 in vec2 vertexTexCoord;
 in vec4 vertexColor;
 uniform mat4 mvp;
+uniform mat4 matModel;   // identity for the scenes' immediate-mode geometry; set by raylib for imported models
 out vec3 fragPos;
 out vec2 fragTexCoord;
 out vec4 fragColor;
 void main() {
-    fragPos = vertexPosition;
+    fragPos = vec3(matModel * vec4(vertexPosition, 1.0));
     fragTexCoord = vertexTexCoord;
     fragColor = vertexColor;
     gl_Position = mvp * vec4(vertexPosition, 1.0);
@@ -27,6 +29,7 @@ in vec3 fragPos;
 in vec2 fragTexCoord;
 in vec4 fragColor;
 uniform sampler2D texture0;
+uniform vec4 colDiffuse; // material base color (white for immediate-mode geometry)
 uniform vec3 viewPos;
 uniform vec3 lightDir;   // direction the light travels
 uniform vec3 fogColor;
@@ -38,7 +41,7 @@ uniform float shine;     // specular amount: 1 = glossy objects, 0 = matte groun
 out vec4 finalColor;
 void main() {
     vec4 texel = texture(texture0, fragTexCoord);
-    vec3 col = fragColor.rgb * texel.rgb;
+    vec3 col = fragColor.rgb * texel.rgb * colDiffuse.rgb;
     vec3 toEye = viewPos - fragPos;
     if (lit > 0.5) {
         vec3 n = cross(dFdx(fragPos), dFdy(fragPos));
@@ -57,7 +60,7 @@ void main() {
     }
     float fog = clamp((length(toEye) - fogNear) / max(fogFar - fogNear, 1e-3), 0.0, 1.0);
     col = mix(col, fogColor, fog * fogMax);
-    finalColor = vec4(col, fragColor.a * texel.a);
+    finalColor = vec4(col, fragColor.a * texel.a * colDiffuse.a);
 }
 )";
 
@@ -75,11 +78,18 @@ void SceneShader::load() {
     fogMax   = GetShaderLocation(sh, "fogMax");
     lit      = GetShaderLocation(sh, "lit");
     shine    = GetShaderLocation(sh, "shine");
+    resetModelMatrix();
 }
 
 void SceneShader::unload() {
     if (ok) UnloadShader(sh);
     ok = false;
+}
+
+void SceneShader::resetModelMatrix() const {
+    if (!ok || sh.locs[SHADER_LOC_MATRIX_MODEL] < 0) return;
+    rlDrawRenderBatchActive();
+    SetShaderValueMatrix(sh, sh.locs[SHADER_LOC_MATRIX_MODEL], MatrixIdentity());
 }
 
 void SceneShader::setMaterial(bool on, float shineAmount) const {

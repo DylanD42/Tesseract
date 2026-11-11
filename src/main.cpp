@@ -7,11 +7,12 @@
 //
 // This file only wires the pieces together. Behaviour lives in:
 //   core/app_state.h   everything the UI can change, and how changes reach the rest of the program
-//   render/scenes.cpp  the scene list
+//   render/scenes.cpp  the scene list (built-in scenes + imported models from render/model_library.cpp)
 //   ui/                start menu, scene picker, settings panel, calibration pages, HUD. New UI goes in `layers`.
 #include "core/app_state.h"
 #include "core/assets.h"
 #include "core/config.h"
+#include "render/model_library.h"
 #include "render/scene_shader.h"
 #include "render/scene_textures.h"
 #include "render/scenes.h"
@@ -22,6 +23,7 @@
 #include "ui/hotkeys.h"
 #include "ui/hud.h"
 #include "ui/menu_ui.h"
+#include "ui/model_controls_ui.h"
 #include "ui/settings_ui.h"
 #include "ui/ui_layer.h"
 #include "ui/webcam_pip.h"
@@ -44,6 +46,7 @@ int main(int argc, char** argv) {
     AppState st;
     st.configPath = std::filesystem::absolute(kConfigFile).string();
     st.cfg.load(st.configPath);
+    InitModelLibrary(std::filesystem::path(st.configPath).parent_path() / "models");   // imported models
     st.cfg.scene = std::clamp(st.cfg.scene, 0, SceneCount() - 1);
     if (argc > 1) st.cfg.cameraIndex = std::atoi(argv[1]);   // optional: camera index on the command line
     // True geometry needs to know where the webcam is; until the photo setup is done, recenter on the user instead
@@ -109,10 +112,11 @@ int main(int argc, char** argv) {
     Hud hud;
     WebcamPip pip;
     SceneOverlayUi sceneOverlay;
+    ModelControlsUi modelControls;
     MenuUi menu;
     CalibrationUi calibration;
     SettingsUi settings;
-    std::vector<UiLayer*> layers = {&hud, &pip, &sceneOverlay, &menu, &calibration, &settings};
+    std::vector<UiLayer*> layers = {&hud, &pip, &sceneOverlay, &modelControls, &menu, &calibration, &settings};
 
     while (!st.quit && !WindowShouldClose()) {
         // ---- camera lifecycle ----
@@ -182,6 +186,49 @@ int main(int argc, char** argv) {
             if (!st.cfg.save(st.configPath)) st.toast.show("Could not write " + st.configPath);
             st.configDirty = false;
         }
+        // ---- imported models: drag-and-drop (the calibration page takes dropped photos itself), import, delete ----
+        if (st.page != Page::Calibration && st.page != Page::PenTipTest && IsFileDropped()) {
+            FilePathList dropped = LoadDroppedFiles();
+            int unsupported = 0;
+            for (unsigned i = 0; i < dropped.count; ++i) {
+                const std::string path = dropped.paths[i];
+                const bool blend = path.size() > 6 && path.compare(path.size() - 6, 6, ".blend") == 0;
+                if (IsSupportedModelFile(path) || blend) st.importModel(path);
+                else ++unsupported;
+            }
+            UnloadDroppedFiles(dropped);
+            if (unsupported && st.importRequests.empty())
+                st.toast.show(std::string("Not a 3D model. Drop one of: ") + kSupportedModelList, 6);
+        }
+        for (const std::string& path : st.importRequests) {
+            std::string err, warning;
+            const int index = ImportModel(path, err, warning);
+            if (index < 0) { st.toast.show("Import failed: " + err, 9); continue; }
+            st.settingsOpen = false;
+            st.enterScene(BuiltInSceneCount() + index);
+            const LoadedModel* m = GetLoadedModel(index);
+            std::string msg = "Imported " + SceneName(st.cfg.scene);
+            msg += m && m->hasCamera ? " (using its camera)" : " (no camera in the file: fitted to the window)";
+            if (m && m->clipCount() > 0) msg += ", " + std::to_string(m->clipCount()) + " animation(s)";
+            if (!warning.empty()) msg += ". " + warning;
+            st.toast.show(msg, 9);
+        }
+        st.importRequests.clear();
+        if (st.removeScene) {
+            const int scene = *st.removeScene;
+            st.removeScene.reset();
+            const std::string name = SceneName(scene);
+            std::string err;
+            if (IsImportedScene(scene) && RemoveImportedModel(ImportedIndex(scene), err)) {
+                if (st.cfg.scene == scene) st.cfg.scene = 0;
+                else if (st.cfg.scene > scene) --st.cfg.scene;
+                st.requestSave();
+                st.toast.show("Deleted " + name, 4);
+            } else if (!err.empty()) {
+                st.toast.show("Delete failed: " + err, 6);
+            }
+        }
+
         if (st.fullscreen != fullscreenApplied) {
             SetBorderlessFullscreen(st.fullscreen, windowed);
             fullscreenApplied = st.fullscreen;
@@ -196,10 +243,13 @@ int main(int argc, char** argv) {
         rig.update(snap, geo, penTip || st.physicalAlignment, penTip ? 1.0 : st.cfg.strength, st.cfg.prediction);
         frame.eyeMm = rig.eyeMm(geo);
         frame.predictS = rig.predictS;
+        if (st.page == Page::Scene && IsImportedScene(st.cfg.scene))
+            if (const LoadedModel* m = GetLoadedModel(ImportedIndex(st.cfg.scene)))
+                AdvancePlayback(st.playback, *m, GetFrameTime());
 
         // ---- draw: 3D scene (on the scene pages), then the UI layers on top ----
         BeginDrawing();
-        const RenderInputs in{rig, geo, shader, textures};
+        const RenderInputs in{rig, geo, shader, textures, &st.playback, st.cfg.modelBackdrop};
         if (penTip) RenderPenTipTest(st.penTipMm, in);
         else if (st.page == Page::Scene) RenderScene(st.cfg.scene, in);
         else ClearBackground(theme::kPanel);   // menu and calibration pages paint the whole window themselves
@@ -211,6 +261,7 @@ int main(int argc, char** argv) {
     if (cameraStart.valid()) cameraStart.wait();
     tracker.stopCamera();
     if (st.configDirty) st.cfg.save(st.configPath);
+    ShutdownModelLibrary();
     calibration.unload();
     pip.unload();
     textures.unload();

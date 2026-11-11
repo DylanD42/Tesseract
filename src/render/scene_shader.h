@@ -16,6 +16,9 @@ struct SceneShader {
     // with the previous values is flushed first.
     void setMaterial(bool on, float shineAmount) const;
     void setLit(bool on) const { setMaterial(on, 1.0f); }
+
+    // Back to world-space vertices after drawing a raylib Model (DrawModel sets the model matrix uniform).
+    void resetModelMatrix() const;
 };
 
 } // namespace tess

@@ -1,6 +1,7 @@
 #include "ui/menu_ui.h"
 
 #include "render/scenes.h"
+#include "ui/file_dialog.h"
 #include "ui/ui_widgets.h"
 
 #include <algorithm>
@@ -39,20 +40,62 @@ void MenuUi::draw(AppState& st, const UiFrame& f) {
         return;
     }
 
-    DrawCenteredText("Select a Scene", 38, sh * 0.16f, theme::kInk);
-    DrawCenteredText("Look through the screen like a window. ESC in a scene returns here.", 18, sh * 0.16f + 56, theme::kMuted);
-    const int n = SceneCount();
-    const float h = 58, gap = 14;
-    const float total = n * h + (n - 1) * gap + 24 + 50;
-    float y = std::max(sh * 0.30f, (sh - total) / 2);
+    // ---- scene picker: built-in scenes, then imported models (scrolls when it does not fit) ----
+    const float titleY = sh * 0.10f;
+    DrawCenteredText("Select a Scene", 38, titleY, theme::kInk);
+    DrawCenteredText("Look through the screen like a window. ESC in a scene returns here.", 18, titleY + 56, theme::kMuted);
+
+    const int n = SceneCount(), builtIn = BuiltInSceneCount();
+    const float h = 54, gap = 12, labelH = 34, deleteW = 84;
+    const float contentH = n * (h + gap) - gap + (n > builtIn ? labelH : 0);
+    const Rectangle view{bx - 8, titleY + 96, buttonWidth + 16, std::max(h, sh - 170 - (titleY + 96))};
+    const float maxScroll = std::max(0.0f, contentH + 8 - view.height);
+    const Vector2 mouse = GetMousePosition();
+    const bool mouseInView = CheckCollisionPointRec(mouse, view);
+    if (interactive && mouseInView) scroll_ -= GetMouseWheelMove() * 60.0f;
+    scroll_ = std::clamp(scroll_, 0.0f, maxScroll);
+    if (pendingDelete_ >= 0 && GetTime() > pendingUntil_) pendingDelete_ = -1;
+
+    BeginScissorMode(int(view.x), int(view.y), int(view.width), int(view.height));
+    float y = view.y + 4 - scroll_;
     for (int i = 0; i < n; ++i) {
-        const Rectangle r{bx, y, buttonWidth, h};
+        if (i == builtIn) {
+            DrawText("YOUR MODELS", int(bx), int(y + 12), 14, theme::kAccent);
+            y += labelH;
+        }
+        const bool imported = i >= builtIn;
+        const Rectangle r{bx, y, imported ? buttonWidth - deleteW - 8 : buttonWidth, h};
         if (i == st.cfg.scene) DrawRectangleRoundedLines({r.x - 4, r.y - 4, r.width + 8, r.height + 8}, 0.2f, 10, Fade(theme::kAccent, 0.5f));
-        if (Button(r, Scenes()[i].name, interactive, 20)) st.enterScene(i);
+        const std::string name = SceneName(i);
+        if (Button(r, name.c_str(), interactive, 20) && mouseInView) st.enterScene(i);
+        if (imported) {
+            const bool confirm = pendingDelete_ == i;
+            const Rectangle d{bx + buttonWidth - deleteW, y, deleteW, h};
+            if (Button(d, confirm ? "Sure?" : "Delete", interactive, 16) && mouseInView) {
+                if (confirm) { st.removeScene = i; pendingDelete_ = -1; }
+                else { pendingDelete_ = i; pendingUntil_ = GetTime() + 3.0; }
+            }
+            if (confirm) DrawRectangleRoundedLines(d, 0.16f, 10, theme::kWarn);
+        }
         y += h + gap;
     }
-    y += 24;
-    if (Button({bx, y, buttonWidth, 50}, "Back to Main Menu", interactive, 18)) st.page = Page::StartMenu;
+    EndScissorMode();
+    if (maxScroll > 0) {   // scroll bar
+        const float barH = view.height * view.height / (contentH + 8);
+        const float barY = view.y + (view.height - barH) * (scroll_ / maxScroll);
+        DrawRectangleRounded({view.x + view.width + 6, barY, 5, barH}, 1, 6, Fade(theme::kMuted, 0.6f));
+    }
+
+    const float by = sh - 150;
+    const float half = (buttonWidth - 12) / 2;
+    if (Button({bx, by, half, 50}, "Import 3D model...", interactive, 18)) {
+        const std::string path = OpenModelFileDialog(GetWindowHandle());
+        if (!path.empty()) st.importModel(path);
+    }
+    if (Button({bx + half + 12, by, half, 50}, "Back to Main Menu", interactive, 18)) st.page = Page::StartMenu;
+    DrawCenteredText("Or drag a .glb / .gltf / .obj file onto this window.", 15, by + 64, theme::kMuted);
+    DrawCenteredText("From Blender: File > Export > glTF 2.0 (.glb), tick Include > Cameras to keep your camera.", 15,
+                     by + 86, theme::kMuted);
 }
 
 void SceneOverlayUi::draw(AppState& st, const UiFrame& f) {

@@ -393,7 +393,7 @@ void SceneShapes(const SceneCtx& c) {
 // ---------------------------------------------------------------- list ------
 const SceneDef kScenes[] = {
     {"Window onto a garden", Color{150, 198, 240, 255}, {0.80f, 0.87f, 0.93f}, 60.0f, 3200.0f, 0.92f, {-0.45f, -1.0f, -0.55f}, SceneWindow},
-    {"Targets (Johnny Lee tribute)", Color{8, 8, 12, 255}, {0.0f, 0.0f, 0.0f}, 4.0f, 70.0f, 0.65f, {0.3f, -1.0f, -0.5f}, SceneTargets},
+    {"Targets", Color{8, 8, 12, 255}, {0.0f, 0.0f, 0.0f}, 4.0f, 70.0f, 0.65f, {0.3f, -1.0f, -0.5f}, SceneTargets},
     {"Furnished room", Color{30, 24, 20, 255}, {0.24f, 0.18f, 0.14f}, 25.0f, 320.0f, 0.35f, {-0.35f, -1.0f, -0.45f}, SceneRoom},
     {"Space porthole", Color{2, 2, 8, 255}, {0.0f, 0.0f, 0.0f}, 1e5f, 2e5f, 0.0f, {-1.0f, -0.25f, -0.35f}, SceneSpace},
     {"Floating shapes", Color{30, 30, 36, 255}, {0.55f, 0.57f, 0.63f}, 0.0f, 32.0f, 0.55f, {0.35f, -1.0f, -0.45f}, SceneShapes},
@@ -402,6 +402,176 @@ constexpr int kSceneCount = int(sizeof(kScenes) / sizeof(kScenes[0]));
 
 // The pen-tip test uses the lighting/fog of the shapes scene.
 const SceneDef& kPenTipSceneDef = kScenes[4];
+
+// Imported models: a neutral studio, no fog (RenderScene adjusts fog and light for files with a camera).
+const SceneDef kImportedSceneDef = {"", Color{24, 26, 32, 255}, {0.09f, 0.10f, 0.13f}, 1e5f, 2e5f, 0.0f,
+                                    {-0.35f, -1.0f, -0.45f}, nullptr};
+
+// Light for files with a camera, in the file's world (Y up): from above, like Blender's sun from the top.
+constexpr Vector3 kFileWorldLight{-0.35f, -1.0f, -0.45f};
+
+Vector3 RotateDir(const Matrix& m, Vector3 d) {
+    return Vector3Normalize(Vector3Subtract(Vector3Transform(d, m), Vector3Transform({0, 0, 0}, m)));
+}
+
+// Draws a convex polygon cut to z <= zMax, so backdrop geometry never crosses the glass toward the viewer.
+void DrawClippedPolygon(const Vector3* p, int n, float zMax, Color col) {
+    Vector3 out[16];
+    int k = 0;
+    for (int i = 0; i < n && k < 15; ++i) {
+        const Vector3 a = p[i], b = p[(i + 1) % n];
+        const bool inA = a.z <= zMax, inB = b.z <= zMax;
+        if (inA) out[k++] = a;
+        if (inA != inB) out[k++] = Vector3Lerp(a, b, (zMax - a.z) / (b.z - a.z));
+    }
+    for (int i = 1; i + 1 < k; ++i) DrawTriangle3D(out[0], out[i], out[i + 1], col);
+}
+
+// The floor under a file with a camera, in the file's own world (metres, Y up).
+struct FileFloor {
+    float y = 0, cx = 0, cz = 0, radius = 20;   // centered under the model
+    float farFromCamera = 40;                   // camera to the floor's furthest corner
+};
+
+FileFloor FloorFor(const LoadedModel& lm) {
+    const BoundingBox& b = lm.bounds;
+    FileFloor f;
+    f.cx = (b.min.x + b.max.x) * 0.5f;
+    f.cz = (b.min.z + b.max.z) * 0.5f;
+    f.y = b.min.y - 0.01f;   // 1 cm under the lowest point (avoids flicker against a ground plane in the file)
+    const float camDist = std::hypot(lm.camera.m12 - f.cx, lm.camera.m14 - f.cz);
+    f.radius = std::max({20.0f, 3.0f * std::max(b.max.x - b.min.x, b.max.z - b.min.z), 2.5f * camDist});
+    f.farFromCamera = camDist + f.radius * 1.42f;
+    return f;
+}
+
+
+// ---------------------------------------------------------------- imported models ------
+// Model space -> world. With a camera in the file: that camera becomes the eye at the sitting position, at real
+// scale (file units are metres). Without one: scaled to fit the opening, resting on its bottom edge, just
+// behind the glass.
+// Half the diagonal of the model's footprint (x/z): how far it reaches from its vertical axis at any spin angle.
+float FootprintRadius(const BoundingBox& b) {
+    return 0.5f * std::hypot(b.max.x - b.min.x, b.max.z - b.min.z);
+}
+
+Matrix ImportedModelTransform(const SceneCtx& c, const LoadedModel& lm, float neutralDistMm) {
+    if (lm.hasCamera) {
+        const float s = 1000.0f * c.unitsPerMm;
+        const Vector3 eye{0, kScreenCenterY, c.zG + neutralDistMm * c.unitsPerMm};
+        return MatrixMultiply(MatrixMultiply(MatrixInvert(lm.camera), MatrixScale(s, s, s)),
+                              MatrixTranslate(eye.x, eye.y, eye.z));
+    }
+    // Fitted so it still fits at any spin angle: width and depth use the radius of its footprint.
+    const float W = c.R - c.L, H = c.T - c.B;
+    const BoundingBox& b = lm.bounds;
+    const float sizeY = std::max(b.max.y - b.min.y, 1e-4f);
+    const float radius = std::max(FootprintRadius(b), 1e-4f);
+    const float k = std::min({0.70f * H / sizeY, 0.80f * W / (2 * radius), 1.5f * H / (2 * radius)});
+    const Vector3 ctr = lm.center();
+    return MatrixMultiply(MatrixMultiply(MatrixTranslate(-ctr.x, -b.min.y, -ctr.z), MatrixScale(k, k, k)),
+                          MatrixTranslate(0, c.B, c.zG - 0.12f * H - k * radius));
+}
+
+// The box swept by a model spinning about its vertical center axis.
+BoundingBox SpinBounds(const BoundingBox& b) {
+    const float r = FootprintRadius(b);
+    const float cx = (b.min.x + b.max.x) * 0.5f, cz = (b.min.z + b.max.z) * 0.5f;
+    return {{cx - r, b.min.y, cz - r}, {cx + r, b.max.y, cz + r}};
+}
+
+BoundingBox TransformBox(const BoundingBox& b, const Matrix& m) {
+    BoundingBox out{{1e30f, 1e30f, 1e30f}, {-1e30f, -1e30f, -1e30f}};
+    for (int i = 0; i < 8; ++i) {
+        const Vector3 p = Vector3Transform({(i & 1) ? b.max.x : b.min.x, (i & 2) ? b.max.y : b.min.y,
+                                           (i & 4) ? b.max.z : b.min.z}, m);
+        out.min = Vector3Min(out.min, p);
+        out.max = Vector3Max(out.max, p);
+    }
+    return out;
+}
+
+void SceneImported(const SceneCtx& c, int libraryIndex, const RenderInputs& in) {
+    const float H = c.T - c.B;
+    LoadedModel* lm = GetLoadedModel(libraryIndex);
+    Matrix m = MatrixIdentity();
+    BoundingBox wb{{c.L, c.B, c.zG - H}, {c.R, c.B, c.zG - H}};   // empty studio if the model failed to load
+    if (lm) {
+        if (lm->clipCount() > 0 && in.playback) lm->pose(in.playback->clip, in.playback->frame);
+        m = ImportedModelTransform(c, *lm, in.rig.neutralDistMm);
+        wb = TransformBox(SpinBounds(lm->bounds), m);   // room sized for any spin angle, so the walls stay put
+    }
+    const Matrix spin = lm && in.playback ? lm->spinTransform(in.playback->yaw, in.playback->pitch) : MatrixIdentity();
+
+    if (in.modelBackdrop && lm && lm->hasCamera) {
+        // A checkered floor in the file's world, under the model, so it lines up with the scene as staged in
+        // Blender (a box room around the screen would be tilted against it whenever the camera looks down).
+        const FileFloor f = FloorFor(*lm);
+        const BoundingBox& b = lm->bounds;
+        const float zMax = c.zG - 0.01f;
+        constexpr int N = 48;
+        const float tile = 2.0f * f.radius / N;
+        Matte(c);
+        rlDrawRenderBatchActive();
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                const float x0 = f.cx - f.radius + i * tile, z0 = f.cz - f.radius + j * tile;
+                const Vector3 q[4] = {Vector3Transform({x0, f.y, z0}, m), Vector3Transform({x0 + tile, f.y, z0}, m),
+                                      Vector3Transform({x0 + tile, f.y, z0 + tile}, m),
+                                      Vector3Transform({x0, f.y, z0 + tile}, m)};
+                DrawClippedPolygon(q, 4, zMax, ((i + j) & 1) ? Color{150, 154, 166, 255} : Color{132, 136, 150, 255});
+            }
+        }
+        // Soft contact shadow straight under the model.
+        Lit(c, false);
+        BeginShadows();
+        const float r = 0.45f * std::max(b.max.x - b.min.x, b.max.z - b.min.z);
+        const float cx = (b.min.x + b.max.x) * 0.5f, cz = (b.min.z + b.max.z) * 0.5f, y = f.y + 0.005f;
+        for (const float scale : {1.0f, 0.7f, 0.45f}) {
+            constexpr int S = 32;
+            for (int s = 0; s < S; ++s) {
+                const float a0 = 2 * float(kPi) * s / S, a1 = 2 * float(kPi) * (s + 1) / S;
+                const Vector3 tri[3] = {
+                    Vector3Transform({cx, y, cz}, m),
+                    Vector3Transform({cx + r * scale * std::cos(a1), y, cz + r * scale * std::sin(a1)}, m),
+                    Vector3Transform({cx + r * scale * std::cos(a0), y, cz + r * scale * std::sin(a0)}, m)};
+                DrawClippedPolygon(tri, 3, zMax, Fade(BLACK, 0.09f));
+            }
+        }
+        EndShadows();
+    } else if (in.modelBackdrop) {
+        // A box room that contains the opening and the whole model: its walls and grid give the depth cues.
+        const float pad = 0.1f * H;
+        const float L = std::min(c.L, wb.min.x - pad), R = std::max(c.R, wb.max.x + pad);
+        const float B = std::min(c.B, wb.min.y), T = std::max(c.T, wb.max.y + pad);
+        const float back = std::min(c.zG - 2.0f * H, wb.min.z - pad);
+        Lit(c, true);
+        rlDrawRenderBatchActive();
+        DrawBoxRoom(L, R, B, T, c.zG, back, Color{150, 154, 166, 255}, Color{176, 180, 192, 255},
+                    Color{196, 199, 208, 255}, Color{164, 168, 180, 255});
+        Lit(c, false);
+        const float ring = std::max(2.5f, (c.zG - back) / 40.0f);
+        const float line = std::max(1.25f, std::max(R - L, T - B) / 40.0f);
+        DrawGrid(L, R, B, T, c.zG, back, ring, line, Color{110, 114, 128, 255});
+        if (lm) {
+            BeginShadows();
+            const Vector3 center{(wb.min.x + wb.max.x) * 0.5f, wb.min.y, (wb.min.z + wb.max.z) * 0.5f};
+            DropShadow(center, 0.35f * std::max(wb.max.x - wb.min.x, wb.max.z - wb.min.z), B, c.lightDir, 0.02f);
+            EndShadows();
+        }
+    }
+    if (!lm) return;
+
+    c.sh->setMaterial(true, 0.6f);
+    if (c.sh->ok)
+        for (int i = 0; i < lm->model.materialCount; ++i) lm->model.materials[i].shader = c.sh->sh;
+    // Mesh by mesh: object keyframes give each mesh its own transform, then the drag spin, then the placement.
+    const Matrix placed = MatrixMultiply(spin, m);
+    for (int i = 0; i < lm->model.meshCount; ++i)
+        DrawMesh(lm->model.meshes[i], lm->model.materials[lm->model.meshMaterial[i]],
+                 MatrixMultiply(lm->meshTransform(i), placed));
+    c.sh->resetModelMatrix();
+}
 
 // ---------------------------------------------------------------- frame -----
 void RenderWithScene(const SceneDef& sd, const RenderInputs& in, const std::function<void(const SceneCtx&)>& draw) {
@@ -443,11 +613,43 @@ void RenderWithScene(const SceneDef& sd, const RenderInputs& in, const std::func
 
 } // namespace
 
-const SceneDef* Scenes() { return kScenes; }
-int SceneCount() { return kSceneCount; }
+int SceneCount() { return kSceneCount + ImportedModelCount(); }
+int BuiltInSceneCount() { return kSceneCount; }
+bool IsImportedScene(int index) { return index >= kSceneCount && index < SceneCount(); }
+int ImportedIndex(int sceneIndex) { return IsImportedScene(sceneIndex) ? sceneIndex - kSceneCount : -1; }
+
+std::string SceneName(int index) {
+    if (index >= 0 && index < kSceneCount) return kScenes[index].name;
+    return ImportedModelName(ImportedIndex(index));
+}
 
 void RenderScene(int sceneIndex, const RenderInputs& in) {
-    const SceneDef& sd = kScenes[std::clamp(sceneIndex, 0, kSceneCount - 1)];
+    const int index = std::clamp(sceneIndex, 0, SceneCount() - 1);
+    if (IsImportedScene(index)) {
+        SceneDef sd = kImportedSceneDef;
+        const LoadedModel* lm = GetLoadedModel(ImportedIndex(index));
+        if (lm && lm->hasCamera) {
+            // Light from above in the file's world, not relative to the screen.
+            const Matrix view = MatrixInvert(lm->camera);
+            sd.light = RotateDir(view, kFileWorldLight);
+            if (in.modelBackdrop) {
+                // Fog that fades the floor's far edge into the background but starts behind the whole model.
+                const BoundingBox& b = lm->bounds;
+                float modelFar = 0;
+                for (int i = 0; i < 8; ++i)
+                    modelFar = std::max(modelFar, Vector3Length(Vector3Transform(
+                        {(i & 1) ? b.max.x : b.min.x, (i & 2) ? b.max.y : b.min.y, (i & 4) ? b.max.z : b.min.z}, view)));
+                const float u = 1000.0f * in.geo.unitsPerMm;   // world units per metre
+                const FileFloor f = FloorFor(*lm);
+                sd.fogEnd = std::min(0.9f * f.farFromCamera * u, 0.9f * kFarPlane);
+                sd.fogStart = std::min(std::max(1.05f * modelFar, 0.4f * f.farFromCamera) * u, 0.95f * sd.fogEnd);
+                sd.fogMax = 1.0f;
+            }
+        }
+        RenderWithScene(sd, in, [&](const SceneCtx& c) { SceneImported(c, ImportedIndex(index), in); });
+        return;
+    }
+    const SceneDef& sd = kScenes[index];
     RenderWithScene(sd, in, [&](const SceneCtx& c) { sd.draw(c); });
 }
 

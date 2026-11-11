@@ -22,7 +22,7 @@ void SettingsUi::draw(AppState& st, const UiFrame& f) {
     const int sw = f.geo.sw, sh = f.geo.sh;
     DrawRectangle(0, 0, sw, sh, Fade(BLACK, 0.65f));
 
-    const float w = std::min(640.0f, sw - 24.0f), h = std::min(700.0f, sh - 24.0f);
+    const float w = std::min(640.0f, sw - 24.0f), h = std::min(720.0f, sh - 24.0f);
     const float x = (sw - w) / 2, y = (sh - h) / 2;
     const float col = x + 36, cw = w - 72;
     DrawRectangleRounded({x, y, w, h}, 0.04f, 10, theme::kPanel);
@@ -117,8 +117,22 @@ void SettingsUi::draw(AppState& st, const UiFrame& f) {
         if (Button({col + 312, by, cw - 312, 38}, "Pen-tip test...", true, 16)) st.openPage(Page::PenTipTest);
     }
 
+    // ---- imported models ----
+    SectionLabel(col, y + 566, "IMPORTED MODELS");
+    {
+        const float tw = (cw - 8) / 2, ty = y + 588;
+        if (Toggle({col, ty, tw, 34}, "Auto-play animations", cfg.modelAutoplay)) {
+            cfg.modelAutoplay = !cfg.modelAutoplay;
+            st.requestSave();
+        }
+        if (Toggle({col + tw + 8, ty, tw, 34}, "Studio backdrop", cfg.modelBackdrop)) {
+            cfg.modelBackdrop = !cfg.modelBackdrop;
+            st.requestSave();
+        }
+    }
+
     // ---- bottom ----
-    const float by = y + h - 92;
+    const float by = y + h - 58;
     if (Button({col, by, 160, 38}, "Reset defaults", true, 16)) {
         cfg.resetTuning();
         st.paramsDirty = true;

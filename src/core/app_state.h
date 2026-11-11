@@ -8,8 +8,11 @@
 //   cameraRequest  -> the tracker is (re)started on that camera index, or stopped (-1)
 //   refreshCameras -> the camera list is enumerated again
 //   fullscreen     -> the window is toggled when it differs from what is applied
+//   importRequests -> model files are copied into the library and the new scene is opened
+//   removeScene    -> that imported scene is deleted from the library
 #pragma once
 #include "core/config.h"
+#include "render/model_library.h"
 #include "tracking/camera_list.h"
 
 #include <optional>
@@ -54,6 +57,9 @@ struct AppState {
 
     Toast toast;
 
+    // Animation of the imported model being shown (main.cpp advances it; the model controls change it).
+    ModelPlayback playback;
+
     // Requests for main.cpp (cleared once applied).
     bool configDirty = false;
     bool paramsDirty = false;
@@ -61,9 +67,12 @@ struct AppState {
     bool refreshCameras = false;
     bool quit = false;
     std::optional<int> cameraRequest;   // camera index to start/switch to, -1 = stop
+    std::vector<std::string> importRequests;   // model files (UTF-8) from the Import button or drag-and-drop
+    std::optional<int> removeScene;            // scene index of an imported scene to delete
 
     // ---- actions: use these rather than poking cfg so the save / tracker update happens ----
     void enterScene(int index);               // from the scene picker: selects, saves, shows the scene
+    void importModel(const std::string& pathUtf8) { importRequests.push_back(pathUtf8); }
     void setStrength(double value);           // clamps to [0.1, 1.5]; saves
     void setFov(double deg, bool diagonal);   // clamps to [20, 160]; updates the tracker; saves
     void setTilt(double deg);                 // clamps to +-kMaxTiltDeg; updates the tracker; saves

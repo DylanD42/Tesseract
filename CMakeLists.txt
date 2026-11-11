@@ -95,7 +95,7 @@ set(TESSERACT_OPENCV_INCLUDES
 #   src/main.cpp           wiring: load models, start tracker, run the frame loop
 #   src/core/              config (saved to tesseract_calibration.yml) + app state shared with the UI
 #   src/tracking/          webcam -> YuNet -> dlib -> solvePnP -> filtered eye position (own threads)
-#   src/render/            off-axis projection, scene shader, procedural textures, the scenes
+#   src/render/            off-axis projection, scene shader, procedural textures, the scenes, imported models
 #   src/ui/                start menu, scene picker, settings panel, calibration pages, HUD. New UI goes here.
 
 add_executable(Tesseract
@@ -111,6 +111,7 @@ add_executable(Tesseract
     src/render/scene_textures.cpp
     src/render/scene_helpers.cpp
     src/render/scenes.cpp
+    src/render/model_library.cpp
     src/ui/ui_widgets.cpp
     src/ui/hotkeys.cpp
     src/ui/hud.cpp
@@ -119,6 +120,7 @@ add_executable(Tesseract
     src/ui/calibration_ui.cpp
     src/ui/webcam_pip.cpp
     src/ui/file_dialog.cpp
+    src/ui/model_controls_ui.cpp
 )
 
 target_include_directories(Tesseract PRIVATE

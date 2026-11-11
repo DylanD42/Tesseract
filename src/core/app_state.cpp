@@ -16,7 +16,9 @@ void AppState::enterScene(int index) {
     configDirty = true;
     page = Page::Scene;
     settingsOpen = false;
-    toast.show(std::string(Scenes()[cfg.scene].name) + "   (ESC = menu, R = recenter)", 6);
+    playback = ModelPlayback{};
+    playback.playing = cfg.modelAutoplay;
+    toast.show(SceneName(cfg.scene) + "   (ESC = menu, R = recenter)", 6);
 }
 
 void AppState::setStrength(double value) {

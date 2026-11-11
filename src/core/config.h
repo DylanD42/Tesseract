@@ -45,6 +45,9 @@ struct Config {
     int    scene = 0;
     bool   prediction = true;     // latency compensation
     bool   showHud = true;
+    // Imported models.
+    bool   modelAutoplay = true;  // start a model's animation when its scene opens
+    bool   modelBackdrop = true;  // studio box room around imported models
 
     double hfovDeg() const;
     bool load(const std::string& path);

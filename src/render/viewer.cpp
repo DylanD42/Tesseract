@@ -47,6 +47,7 @@ void ViewerRig::init(const ScreenDims& dims) {
 
 void ViewerRig::update(const Snapshot& snap, const ScreenGeometry& g, bool absolute, double strength, bool prediction) {
     predictS = 0.0;
+    if (snap.calibrated && snap.reference[2] > 150) neutralDistMm = float(snap.reference[2]);
     if (snap.valid && (absolute || snap.calibrated)) {
         if (prediction) {
             const double speed = cv::norm(snap.vel);

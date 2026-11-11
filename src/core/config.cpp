@@ -35,6 +35,7 @@ bool Config::load(const std::string& path) {
     ri("camera_index", cameraIndex); ri("webcam_view", webcamView);
     rd("strength", strength); ri("scene", scene);
     rb("prediction", prediction); rb("show_hud", showHud);
+    rb("model_autoplay", modelAutoplay); rb("model_backdrop", modelBackdrop);
     strength = std::clamp(strength, 0.1, 1.5);
     camTiltDeg = std::clamp(camTiltDeg, -kMaxTiltDeg, kMaxTiltDeg);
     cameraIndex = std::max(0, cameraIndex);
@@ -54,6 +55,7 @@ bool Config::save(const std::string& path) const {
     fs << "camera_index" << cameraIndex << "webcam_view" << webcamView;
     fs << "strength" << strength << "scene" << scene;
     fs << "prediction" << int(prediction) << "show_hud" << int(showHud);
+    fs << "model_autoplay" << int(modelAutoplay) << "model_backdrop" << int(modelBackdrop);
     return true;
 }
 

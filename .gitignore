@@ -33,3 +33,5 @@ Makefile
 *.bak
 # Per-machine calibration written by the app
 tesseract_calibration.yml
+# Imported 3D models (copied in by the app; see src/render/model_library.h)
+/models/
