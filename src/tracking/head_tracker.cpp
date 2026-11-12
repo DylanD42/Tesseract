@@ -84,7 +84,6 @@ struct Shared {
     Snapshot snap;
     std::atomic<bool> quit{false};
     std::atomic<bool> recalibrate{false};
-    std::atomic<int>  eyeSelect{0};          // 0 = midpoint, 1 = left eye, 2 = right eye (pen-tip test)
     std::mutex pm;
     TrackerParams params;
     std::atomic<int>  paramsVersion{0};
@@ -148,7 +147,6 @@ struct Tracker {
     cv::Vec4d box{0, 0, 0, 0};
     std::vector<cv::Point2f> prevFused, prevDet;
     Clock::time_point lastMeas{};
-    int eyeSel = 0;
     Tracker() {
         for (int i = 0; i < 2; ++i) { filt[i].minCutoff = kXYMinCutoff; filt[i].beta = kXYBeta; }
         filt[2].minCutoff = kZMinCutoff; filt[2].beta = kZBeta;
@@ -347,7 +345,7 @@ bool UpdateTracking(const cv::Mat& frame, Dbg& dbg, cv::Ptr<cv::FaceDetectorYN>&
     cv::Mat e = Rm * eyeLocal + t.tvec;
     const double Z = e.at<double>(2);
     const cv::Point2d rightEye = (img[3] + img[5]) * 0.5, leftEye = (img[4] + img[6]) * 0.5;
-    const cv::Point2d eyePx = t.eyeSel == 1 ? leftEye : t.eyeSel == 2 ? rightEye : (leftEye + rightEye) * 0.5;
+    const cv::Point2d eyePx = (leftEye + rightEye) * 0.5;
     dbg.circle(eyePx, 4, cv::Scalar(0, 0, 255), cv::FILLED);
     const cv::Vec3d camEye((eyePx.x - cx) / f * Z, (eyePx.y - cy) / f * Z, Z);
     if (!(std::isfinite(camEye[0]) && std::isfinite(camEye[1]) && std::isfinite(camEye[2]))) {
@@ -436,9 +434,6 @@ void trackingWorker(FrameSource& src, std::string yunetModel, const dlib::shape_
             { std::lock_guard<std::mutex> lk(shared.pm); params = shared.params; paramsSeen = shared.paramsVersion.load(); }
             paramsChanged = true;
         }
-        const int eyeSel = shared.eyeSelect.load();
-        if (eyeSel != t.eyeSel) { t.eyeSel = eyeSel; t.resetFilters(); }
-
         const DebugView view = DebugView(shared.debugView.load());
         if (view == DebugView::Window && !windowOpen) {
             cv::namedWindow(kWin, cv::WINDOW_NORMAL);
@@ -622,7 +617,6 @@ void HeadTracker::setParams(const TrackerParams& p) {
 }
 
 void HeadTracker::recenter() { impl_->shared.recalibrate = true; }
-void HeadTracker::setEyeSelect(int sel) { impl_->shared.eyeSelect = sel; }
 void HeadTracker::setDebugView(DebugView view) { impl_->shared.debugView = int(view); }
 
 bool HeadTracker::debugImage(cv::Mat& rgba, std::uint64_t& seq) const {

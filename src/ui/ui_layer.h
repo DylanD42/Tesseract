@@ -4,7 +4,7 @@
 //   1. update() is called on every layer, topmost first, until one returns true (it owns the input this frame:
 //      a modal panel is open, or the layer is a full page). If none does and the Scene page is showing,
 //      the scene hotkeys run.
-//   2. The 3D scene is drawn (only on the Scene and PenTipTest pages).
+//   2. The 3D scene is drawn (on the Scene page, and behind the scene selector when previewing).
 //   3. draw() is called on every layer, bottom-most first, so later layers appear on top. Widgets are
 //      immediate-mode (ui_widgets.h): drawing a button also reports its click, so draw() may change AppState.
 //

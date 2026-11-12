@@ -102,7 +102,6 @@ int main(int argc, char** argv) {
     rig.init(dims);
     WindowedState windowed;
     bool fullscreenApplied = false;
-    int eyeSelectApplied = 0;
     cv::Mat pipImage;
     std::uint64_t pipSeq = 0;
     Vector2 lastMouse = GetMousePosition();
@@ -176,7 +175,6 @@ int main(int argc, char** argv) {
 
         // ---- apply what the UI asked for ----
         if (st.recenter) { tracker.recenter(); st.recenter = false; }
-        if (st.eyeSelect != eyeSelectApplied) { tracker.setEyeSelect(st.eyeSelect); eyeSelectApplied = st.eyeSelect; }
         if (st.paramsDirty) {
             dims = ResolveScreen(st.cfg, mon);
             tracker.setParams(MakeTrackerParams(st.cfg, dims));
@@ -187,7 +185,7 @@ int main(int argc, char** argv) {
             st.configDirty = false;
         }
         // ---- imported models: drag-and-drop (the calibration page takes dropped photos itself), import, delete ----
-        if (st.page != Page::Calibration && st.page != Page::PenTipTest && IsFileDropped()) {
+        if (st.page != Page::Calibration && IsFileDropped()) {
             FilePathList dropped = LoadDroppedFiles();
             int unsupported = 0;
             for (unsigned i = 0; i < dropped.count; ++i) {
@@ -244,12 +242,11 @@ int main(int argc, char** argv) {
 
         // ---- eye position -> virtual camera ----
         // True geometry: eye relative to the center of the drawn area. Recentered: relative to where you sat
-        // during the first second (R). Strength scales the sideways/vertical motion; the pen-tip test uses 1.0.
+        // during the first second (R). Strength scales the sideways/vertical motion.
         // The scene selector's preview uses the mouse instead (head tracking starts when the scene is entered).
-        const bool penTip = st.page == Page::PenTipTest;
         const int preview = st.page == Page::SceneSelect && !st.settingsOpen ? st.previewScene : -1;
         if (preview >= 0) rig.updateFromMouse(geo, GetMousePosition());
-        else rig.update(snap, geo, penTip || st.physicalAlignment, penTip ? 1.0 : st.cfg.strength, st.cfg.prediction);
+        else rig.update(snap, geo, st.physicalAlignment, st.cfg.strength, st.cfg.prediction);
         frame.eyeMm = rig.eyeMm(geo);
         frame.predictS = rig.predictS;
         const int shownScene = st.page == Page::Scene ? st.cfg.scene : preview;
@@ -260,8 +257,7 @@ int main(int argc, char** argv) {
         // ---- draw: 3D scene (on the scene pages), then the UI layers on top ----
         BeginDrawing();
         const RenderInputs in{rig, geo, shader, textures, &st.playback};
-        if (penTip) RenderPenTipTest(st.penTipMm, in);
-        else if (shownScene >= 0) RenderScene(shownScene, in);
+        if (shownScene >= 0) RenderScene(shownScene, in);
         else ClearBackground(theme::kPanel);   // menu and calibration pages paint the whole window themselves
         for (UiLayer* layer : layers) layer->draw(st, frame);
         DrawToast(st.toast, geo.sw, geo.sh);

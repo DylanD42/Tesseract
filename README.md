@@ -44,7 +44,6 @@ Sit still for a second after start so the tracker can center on you. Keys on the
 | `L`          | Latency prediction on/off                                   |
 | `H`          | HUD on/off                                                  |
 | `C`          | Setup menu: screen photo, webcam field of view              |
-| `V`          | Pen-tip test (checks the setup)                             |
 | `F11`        | Borderless fullscreen                                       |
 | `ESC`        | Quit                                                        |
 
@@ -113,7 +112,7 @@ src/
     ui_widgets.*         NumberField, DrawPanel, DrawLinesAt
     hotkeys.*            keyboard shortcuts
     hud.*                the status overlay and the toast
-    setup_ui.*           setup menu, screen photo, FOV entry, pen-tip test
+    setup_ui.*           setup menu, screen photo, FOV entry
 ```
 
 ### Adding UI (scene selector, settings tab, ...)
@@ -142,5 +141,5 @@ opening rectangle in world units, the light direction, the textures, the time an
 
 The tracker estimates camera intrinsics from the frame size and the webcam field of view (default 70
 degrees horizontal, zero lens distortion). The real webcam FOV may differ, so enter it in the setup
-menu, or fine-tune it with the pen-tip test. Positions are in millimetres based on a generic 3D face
+menu (the readout there shows the measured eye distance: too short, lower the FOV; too long, raise it). Positions are in millimetres based on a generic 3D face
 template, so facial proportions and head pose affect accuracy.

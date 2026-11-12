@@ -62,7 +62,7 @@ public:
 
     // Opens the webcam and starts the threads. Blocks for up to a few seconds while the camera opens, so call it
     // from a worker (std::async) if the window must stay responsive. Not thread-safe against the other methods
-    // except snapshot()/setParams()/recenter()/setEyeSelect()/setDebugView(), which are fine to call meanwhile.
+    // except snapshot()/setParams()/recenter()/setDebugView(), which are fine to call meanwhile.
     bool startCamera(int cameraIndex, std::string& error);
     void stopCamera();                           // joins the threads and releases the camera
     bool cameraActive() const;
@@ -70,7 +70,6 @@ public:
     Snapshot snapshot() const;                   // latest result (a copy; safe to call every frame)
     void setParams(const TrackerParams& p);      // webcam FOV, lens position or tilt changed
     void recenter();                             // capture a new sitting-position reference (R)
-    void setEyeSelect(int sel);                  // 0 midpoint, 1 left eye, 2 right eye (pen-tip test)
 
     void setDebugView(DebugView view);
     // Copies the newest diagnostics image (RGBA, mirrored) if its sequence number is newer than `seq`.

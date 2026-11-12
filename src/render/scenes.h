@@ -42,7 +42,4 @@ struct RenderInputs {
 // Draws one full frame of the given scene with the off-axis projection (ClearBackground included).
 void RenderScene(int sceneIndex, const RenderInputs& in);
 
-// The pen-tip test: a gridded box with a red dot penTipMm in front of the screen center.
-void RenderPenTipTest(double penTipMm, const RenderInputs& in);
-
 } // namespace tess

@@ -1,7 +1,6 @@
-// Full-window calibration pages, opened from the Settings panel:
-//   Calibration : load a photo of the setup (Browse or drag and drop), click the 4 screen corners and the webcam
-//                 lens, type the diagonal in inches -> exact screen size and webcam position.
-//   PenTipTest  : a red dot that should stay glued to a real pen tip held in front of the screen; fine-tunes the FOV.
+// Full-window calibration page, opened from the Settings panel: load a photo of the setup (Browse or drag and
+// drop), click the 4 screen corners and the webcam lens, type the diagonal in inches -> exact screen size and
+// webcam position.
 #pragma once
 #include "ui/ui_layer.h"
 #include "ui/ui_widgets.h"
@@ -34,7 +33,6 @@ private:
     void computePhoto(AppState& st, const UiFrame& f);
     void commitPhoto(AppState& st);
     void drawCalibration(AppState& st, const UiFrame& f);
-    void drawPenTip(AppState& st, const UiFrame& f);
 
     NumberField field_;
     PhotoState photo_;

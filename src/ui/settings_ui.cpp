@@ -113,8 +113,7 @@ void SettingsUi::draw(AppState& st, const UiFrame& f) {
             st.setTilt(tilt);
 
         const float by = y + 516;
-        if (Button({col, by, 300, 38}, "Screen photo: corners + webcam lens...", true, 16)) st.openPage(Page::Calibration);
-        if (Button({col + 312, by, cw - 312, 38}, "Pen-tip test...", true, 16)) st.openPage(Page::PenTipTest);
+        if (Button({col, by, cw, 38}, "Screen photo: corners + webcam lens...", true, 16)) st.openPage(Page::Calibration);
     }
 
     // ---- bottom ----

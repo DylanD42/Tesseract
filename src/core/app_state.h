@@ -23,7 +23,7 @@ namespace tess {
 
 // Full-window pages. Settings is a modal panel that can sit on top of StartMenu or Scene.
 // SceneSelect can show a live preview of the chosen scene behind the menu (mouse parallax, no head tracking).
-enum class Page { StartMenu, SceneSelect, Scene, Calibration, PenTipTest };
+enum class Page { StartMenu, SceneSelect, Scene, Calibration };
 
 enum class WebcamView { Off = 0, Window = 1, PictureInPicture = 2 };
 
@@ -42,8 +42,6 @@ struct AppState {
     // Runtime (not saved).
     bool physicalAlignment = false;   // true geometry (needs the webcam position) vs recentered on the user
     bool fullscreen = false;
-    int  eyeSelect = 0;               // 0 = midpoint, 1 = left eye, 2 = right eye (pen-tip test)
-    double penTipMm = 100;            // pen-tip test distance
 
     // Navigation.
     Page page = Page::StartMenu;
@@ -88,8 +86,8 @@ struct AppState {
 
     void openSettings();                      // over the current page
     void closeSettings();
-    void openPage(Page p);                    // Calibration / PenTipTest from the settings panel
-    void backToSettings();                    // from Calibration / PenTipTest
+    void openPage(Page p);                    // Calibration from the settings panel
+    void backToSettings();                    // from Calibration
 
     WebcamView webcamView() const { return WebcamView(cfg.webcamView); }
     std::string fovLabel() const;             // e.g. "78.0 deg diagonal = 70.4 deg horizontal"

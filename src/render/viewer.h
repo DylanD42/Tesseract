@@ -31,7 +31,7 @@ struct ViewerRig {
     float   neutralDistMm = 600;   // sitting distance from the screen (recenter reference); imported cameras sit here
 
     void init(const ScreenDims& dims);
-    // absolute: eye relative to the window center (true geometry / pen-tip test); otherwise relative to the
+    // absolute: eye relative to the window center (true geometry); otherwise relative to the
     // recentered sitting position. strength scales sideways/vertical motion (1.0 = physically exact).
     void update(const Snapshot& snap, const ScreenGeometry& g, bool absolute, double strength, bool prediction);
     // Scene-selector preview: the mouse stands in for the head. Mouse at the window center = straight on;

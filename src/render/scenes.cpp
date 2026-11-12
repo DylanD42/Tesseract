@@ -101,7 +101,7 @@ void SceneWindow(const SceneCtx& c) {
     EndShadows();
 }
 
-// 2. TARGETS: Johnny Lee's classic Wii head-tracking demo. A deep gridded box with targets on sticks;
+// 2. TARGETS: A deep gridded box with targets on sticks;
 //    a few targets float in front of the glass (kept near the center so the screen edge never cuts them).
 void SceneTargets(const SceneCtx& c) {
     const float zB = c.zG - 38.0f;
@@ -396,7 +396,7 @@ const SceneDef kScenes[] = {
      "A real window with a deep frame, looking out onto a garden. The flower box right outside moves against the "
      "trees and hills far away: the biggest depth difference of all the scenes."},
     {"Targets", Color{8, 8, 12, 255}, {0.0f, 0.0f, 0.0f}, 4.0f, 70.0f, 0.65f, {0.3f, -1.0f, -0.5f}, SceneTargets,
-     "A tribute to Johnny Lee's Wii head-tracking demo: a deep gridded box with targets on sticks. A few targets "
+     "A deep gridded box with targets on sticks. A few targets "
      "float in front of the screen."},
     {"Furnished room", Color{30, 24, 20, 255}, {0.24f, 0.18f, 0.14f}, 25.0f, 320.0f, 0.35f, {-0.35f, -1.0f, -0.45f}, SceneRoom,
      "A furnished room seen through a doorway. Familiar objects (table, chairs, shelves, lamp) help your eyes "
@@ -408,9 +408,6 @@ const SceneDef kScenes[] = {
      "Shapes hanging on strings in a gridded room, with soft shadows on the floor."},
 };
 constexpr int kSceneCount = int(sizeof(kScenes) / sizeof(kScenes[0]));
-
-// The pen-tip test uses the lighting/fog of the shapes scene.
-const SceneDef& kPenTipSceneDef = kScenes[4];
 
 // Imported models: a neutral studio, no fog (RenderScene adjusts fog and light for files with a camera).
 const SceneDef kImportedSceneDef = {"", Color{24, 26, 32, 255}, {0.09f, 0.10f, 0.13f}, 1e5f, 2e5f, 0.0f,
@@ -666,22 +663,6 @@ void RenderScene(int sceneIndex, const RenderInputs& in) {
     }
     const SceneDef& sd = kScenes[index];
     RenderWithScene(sd, in, [&](const SceneCtx& c) { sd.draw(c); });
-}
-
-void RenderPenTipTest(double penTipMm, const RenderInputs& in) {
-    RenderWithScene(kPenTipSceneDef, in, [&](const SceneCtx& c) {
-        Lit(c, true);
-        rlDrawRenderBatchActive();
-        DrawBoxRoom(c.L, c.R, c.B, c.T, c.zG, c.zG - 25.0f, Color{196, 198, 206, 255}, Color{222, 224, 232, 255},
-                    Color{236, 237, 242, 255}, Color{210, 212, 220, 255});
-        const Vector3 tip{0, kScreenCenterY, c.zG + float(penTipMm) * c.unitsPerMm};
-        DrawSphereEx(tip, 2.5f * c.unitsPerMm, 16, 16, RED);
-        Lit(c, false);
-        DrawGrid(c.L, c.R, c.B, c.T, c.zG, c.zG - 25.0f, 2.5f, 1.25f, Color{118, 122, 136, 255});
-        const float cr = 15.0f * c.unitsPerMm, z = c.zG + 0.005f;
-        DrawLine3D({-cr, kScreenCenterY, z}, {cr, kScreenCenterY, z}, BLACK);
-        DrawLine3D({0, kScreenCenterY - cr, z}, {0, kScreenCenterY + cr, z}, BLACK);
-    });
 }
 
 } // namespace tess

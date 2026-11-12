@@ -13,7 +13,6 @@
 namespace tess {
 namespace {
 
-const char* kEyeNames[] = {"Both eyes (midpoint)", "Left eye", "Right eye"};
 const char* kPointNames[] = {"1 top-left", "2 top-right", "3 bottom-right", "4 bottom-left", "5 webcam lens"};
 constexpr float kPanelH = 150;   // instruction panel at the top of the photo page
 
@@ -108,11 +107,7 @@ void CalibrationUi::commitPhoto(AppState& st) {
 }
 
 bool CalibrationUi::update(AppState& st, const UiFrame& f) {
-    if (st.page != Page::Calibration && st.page != Page::PenTipTest) return false;
-    if (st.page == Page::PenTipTest) {
-        if (IsKeyPressed(KEY_ESCAPE)) st.backToSettings();
-        return true;
-    }
+    if (st.page != Page::Calibration) return false;
 
     if (IsFileDropped()) {   // dropping a photo anywhere on this page loads it
         FilePathList dropped = LoadDroppedFiles();
@@ -136,7 +131,6 @@ bool CalibrationUi::update(AppState& st, const UiFrame& f) {
 // ------------------------------------------------------------------ draw -----
 void CalibrationUi::draw(AppState& st, const UiFrame& f) {
     if (st.page == Page::Calibration) drawCalibration(st, f);
-    else if (st.page == Page::PenTipTest) drawPenTip(st, f);
 }
 
 void CalibrationUi::drawCalibration(AppState& st, const UiFrame& f) {
@@ -226,49 +220,6 @@ void CalibrationUi::drawCalibration(AppState& st, const UiFrame& f) {
         if (Button({336, by, 110, 36}, "Back", true, 16)) st.backToSettings();
     }
 }
-
-void CalibrationUi::drawPenTip(AppState& st, const UiFrame& f) {
-    const float panelX = 20;
-    const float panelY = 18;
-    const float panelW = std::min(720.0f, float(f.geo.sw) - 40.0f);
-    const float panelH = 346;
-    const float contentX = panelX + 24;
-    const float contentW = panelW - 48;
-
-    DrawRectangleRounded({panelX, panelY, panelW, panelH}, 0.04f, 10, Fade(theme::kPanel, 0.94f));
-    DrawRectangleRoundedLines({panelX, panelY, panelW, panelH}, 0.04f, 10, theme::kButtonBorder);
-    DrawText("PEN-TIP ALIGNMENT TEST", int(contentX), int(panelY + 16), 22, theme::kInk);
-    DrawText("Hold a real pen at the indicated distance and move your head side to side.",
-             int(contentX), int(panelY + 48), 14, theme::kMuted);
-    DrawText("Adjust webcam FOV until the red marker stays aligned with the pen tip.",
-             int(contentX), int(panelY + 68), 14, theme::kMuted);
-
-    SectionLabel(contentX, panelY + 94, "TEST CONTROLS");
-    Slider(contentX, panelY + 114, contentW, "Pen-tip distance from screen", st.penTipMm, 50, 1000, "%.0f mm");
-    double horizontalFov = st.cfg.hfovDeg();
-    if (Slider(contentX, panelY + 162, contentW, "Webcam horizontal FOV", horizontalFov, 20, 160, "%.1f deg"))
-        st.setFov(horizontalFov, false);
-
-    SectionLabel(contentX, panelY + 210, "TRACKED EYE");
-    const float gap = 8;
-    const float eyeW = (contentW - 2 * gap) / 3;
-    const float eyeY = panelY + 230;
-    for (int i = 0; i < 3; ++i) {
-        if (Toggle({contentX + i * (eyeW + gap), eyeY, eyeW, 34}, kEyeNames[i], st.eyeSelect == i, true, 15))
-            st.eyeSelect = i;
-    }
-
-    const std::string tracking = f.snap.tracking
-        ? Fmt("Tracking face | raw eye distance %.0f mm", f.snap.rawZ)
-        : "Not tracking a face";
-    DrawText(tracking.c_str(), int(contentX), int(panelY + 276), 14, f.snap.tracking ? theme::kAccent : theme::kWarn);
-    DrawText(Fmt("%s | prediction %.0f ms", f.snap.status.c_str(), f.predictS * 1000.0).c_str(),
-             int(contentX), int(panelY + 296), 13, theme::kMuted);
-
-    if (Button({contentX, panelY + 318, 120, 34}, "Back to settings", true, 15)) st.backToSettings();
-    DrawText("ESC also returns to settings", int(contentX + 136), int(panelY + 328), 13, theme::kMuted);
-}
-
 
 void CalibrationUi::unload() {
     if (photo_.loaded) { UnloadTexture(photo_.tex); photo_.loaded = false; }

@@ -2,7 +2,7 @@
 //   Parallax     strength slider; true geometry / prediction / HUD / fullscreen toggles
 //   Camera       pick any webcam on the machine, start / switch / stop
 //   Webcam view  off, separate window, picture-in-picture
-//   Calibration  webcam field of view, webcam tilt, screen photo (corners + lens), pen-tip test
+//   Calibration  webcam field of view, webcam tilt, screen photo (corners + lens)
 // Everything saves to tesseract_calibration.yml as it changes.
 #pragma once
 #include "ui/ui_layer.h"
