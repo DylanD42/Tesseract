@@ -1,0 +1,37 @@
+# CMake build directories
+/build/
+**/build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Compiled files
+*.exe
+*.obj
+*.o
+*.lib
+*.a
+*.dll
+*.pdb
+*.ilk
+*.exp
+
+# Visual Studio
+.vs/
+.vscode/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.user
+*.suo
+
+# Temporary files
+*.log
+*.tmp
+*.bak
+# Per-machine calibration written by the app
+tesseract_calibration.yml
+# Imported 3D models (copied in by the app; see src/render/model_library.h)
+/models/
